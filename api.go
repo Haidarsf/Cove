@@ -415,6 +415,7 @@ func apiInstall(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	fw := &flushWriter{w: w}
 	if err := runInstall(body.What, body.Branch, fw); err != nil {
+		log.Printf("install %s %s: %v", body.What, body.Branch, err) // the client may be gone
 		fmt.Fprintf(fw, "✗ %v\n", err)
 		return
 	}
