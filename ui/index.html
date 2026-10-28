@@ -128,6 +128,25 @@ select { padding: 6px 12px; border-radius: 10px; }
 @media (prefers-color-scheme: dark) { .chip.lv { background: rgba(232,93,74,.15); color: #ff9c8c; } .chip.wp { background: rgba(80,130,230,.15); color: #9dbbf5; } }
 .tile .foot { display: flex; gap: 6px; align-items: center; border-top: 1px dashed var(--line); padding-top: 12px; }
 .tile .foot select { flex: 1; min-width: 0; }
+.tile .avatar { background: var(--sea-soft); color: var(--sea); }
+.tile .open { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: var(--ink-3); flex: none; }
+.tile .open:hover { background: var(--surface-2); color: var(--sea); }
+.tile .open svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tile select.php { width: 100%; }
+.tile .foot .sp { flex: 1; }
+.tile .tog { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.switch.sm { width: 34px; height: 20px; }
+.switch.sm::after { width: 14px; height: 14px; }
+.switch.sm.on::after { left: 17px; }
+.addsite { display: none; }
+.addsite.open { display: flex; }
+.more { position: relative; }
+.more summary { list-style: none; }
+.more summary::-webkit-details-marker { display: none; }
+.more .menu { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 5; min-width: 170px; padding: 6px; background: var(--surface); border-radius: 12px; box-shadow: var(--shadow), inset 0 0 0 1px var(--line); display: flex; flex-direction: column; }
+.more .menu button { text-align: left; border: 0; background: none; color: var(--ink); padding: 8px 10px; border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer; }
+.more .menu button:hover { background: var(--surface-2); }
+.more .menu button.warn:hover { color: var(--coral); }
 .empty { padding: 56px 20px; text-align: center; color: var(--ink-2); }
 .dump { padding: 14px 20px; border-bottom: 1px solid var(--line); }
 .dump:last-child { border-bottom: 0; }
@@ -368,36 +387,44 @@ async function install(what, branch) {
 }
 
 // ---------- Sites ----------
-const HUES = ['#0d9488','#2563eb','#c026d3','#ea580c','#16a34a','#7c3aed','#db2777','#0891b2','#ca8a04','#4f46e5'];
-const hue = s => HUES[[...s].reduce((a, c) => a + c.charCodeAt(0), 0) % HUES.length];
 async function sites() {
   const list = await api('/api/sites'), vers = status.php.map(p => p.branch);
+  const home = status.home.replace(/[\\/]\.cove$/i, ''), short = p => p.startsWith(home) ? '~' + p.slice(home.length) : p;
   $('#view').innerHTML = `
     <div class="title"><div><h1>Sites</h1><p>Every folder in a parked directory is served at <code>folder.${esc(status.tld)}</code>.</p></div><div class="sp"></div>
-      <input type="text" id="q" placeholder="Search sites" oninput="filt()" style="width:200px"></div>
-    <div class="tools panel" style="padding:12px">
+      <input type="text" id="q" placeholder="Search sites" oninput="filt()" style="width:200px">
+      <button class="btn fill" onclick="$('#addsite').classList.toggle('open')">+ Add site</button></div>
+    <div class="tools panel addsite" id="addsite">
       <input type="text" id="lp" placeholder="C:\\path\\to\\project" style="flex:2;min-width:220px">
       <input type="text" id="ln" placeholder="name (optional)" style="flex:1;min-width:130px">
-      <button class="btn" onclick="park()">Park folder</button><button class="btn fill" onclick="link()">Link site</button>
+      <button class="btn" onclick="park()" title="Serve every folder inside as its own site">Park folder</button><button class="btn fill" onclick="link()" title="Serve this one folder">Link site</button>
     </div><div class="console" id="console"></div>
     ${list.length ? `<div class="tiles">${list.map(s => `
       <div class="panel tile" data-n="${esc(s.name)}">
-        <div class="top"><div class="avatar" style="background:${hue(s.name)}">${esc(s.name[0])}</div>
-          <div style="min-width:0"><a class="host" href="${esc(s.url)}" target="_blank">${esc(s.host)}</a><div class="path" title="${esc(s.path)}">${esc(s.path)}</div></div></div>
+        <div class="top"><div class="avatar">${esc(s.name[0])}</div>
+          <div style="min-width:0;flex:1"><a class="host" href="${esc(s.url)}" target="_blank">${esc(s.host)}</a><div class="path" title="${esc(s.path)}">${esc(short(s.path))}</div></div>
+          <a class="open" href="${esc(s.url)}" target="_blank" title="Open in browser" aria-label="Open ${esc(s.host)}"><svg viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg></a></div>
         <div class="meta"><span class="chip ${s.framework === 'Laravel' ? 'lv' : s.framework === 'WordPress' ? 'wp' : ''}">${esc(s.framework)}</span>
-          ${s.share ? `<a class="chip tls" href="${esc(s.share)}" title="Public link — anyone can open it">${esc(s.share.replace('https://', ''))}</a>` : ''}${s.secure ? '<span class="chip tls">HTTPS</span>' : ''}${s.linked ? '<span class="chip">linked</span>' : ''}${s.isolated ? `<span class="chip">pinned ${esc(s.php)}</span>` : ''}</div>
+          ${s.secure ? '<span class="chip tls">HTTPS</span>' : ''}${s.linked ? '<span class="chip">linked</span>' : ''}
+          ${s.share ? `<a class="chip tls" href="${esc(s.share)}" target="_blank" title="Public link. Anyone can open it">shared · ${esc(s.share.replace('https://', '').split('.')[0])}</a>` : ''}</div>
+        <select class="php" title="PHP version" onchange="iso('${s.name}',this.value)"><option value="">PHP ${esc(status.default_php)} (default)</option>${vers.map(v => `<option value="${v}" ${s.isolated && s.php === v ? 'selected' : ''}>PHP ${v} (pinned)</option>`).join('')}</select>
         <div class="foot">
-          <select title="PHP version" onchange="iso('${s.name}',this.value)"><option value="">PHP ${esc(status.default_php)} (default)</option>${vers.map(v => `<option value="${v}" ${s.isolated && s.php === v ? 'selected' : ''}>PHP ${v}</option>`).join('')}</select>
-          <button class="btn sm plain" title="${s.secure ? 'Turn HTTPS off' : 'Turn HTTPS on'}" onclick="sec('${s.name}',${!s.secure})">${s.secure ? 'HTTP' : 'HTTPS'}</button>
-          <button class="btn sm plain" onclick="post('/api/sites/reveal',{name:'${s.name}'})">Folder</button>
-          <button class="btn sm plain" onclick="shr('${s.name}',${!s.share})">${s.share ? 'Stop sharing' : 'Share'}</button>
-          ${s.linked ? `<button class="btn sm plain warn" onclick="unl('${s.name}')">Unlink</button>` : ''}
+          <label class="tog" title="${s.secure ? 'Served over HTTPS' : 'Served over HTTP'}">HTTPS <button class="switch sm ${s.secure ? 'on' : ''}" aria-label="HTTPS for ${esc(s.host)}" onclick="sec('${s.name}',${!s.secure})"></button></label>
+          <span class="sp"></span>
+          <button class="btn sm ${s.share ? 'sea' : 'plain'}" onclick="shr('${s.name}',${!s.share})">${s.share ? 'Stop sharing' : 'Share'}</button>
+          <details class="more"><summary class="btn sm plain" aria-label="More actions" title="More actions"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></summary><div class="menu">
+            <button onclick="post('/api/sites/reveal',{name:'${s.name}'})">Open folder</button>
+            ${s.share ? `<button onclick="navigator.clipboard.writeText('${esc(s.share)}');toast('Share link copied')">Copy share link</button>` : ''}
+            ${s.linked ? `<button class="warn" onclick="unl('${s.name}')">Unlink</button>` : ''}
+          </div></details>
         </div>
-      </div>`).join('')}</div>` : `<div class="panel empty"><b>No sites yet</b>Create a folder in <code>${esc(status.paths[0] || '')}</code> or link a project above.</div>`}
+      </div>`).join('')}</div>` : `<div class="panel empty"><b>No sites yet</b>Create a folder in <code>${esc(status.paths[0] || '')}</code> or use <b>+ Add site</b>.</div>`}
     <div class="label">Parked folders</div>
     <div class="panel rows">${status.paths.map(p => `<div class="row"><span class="grow mono">${esc(p)}</span>
       <button class="btn sm plain" onclick="reveal('${js(p)}')">Open</button><button class="btn sm plain warn" onclick="unpark('${js(p)}')">Remove</button></div>`).join('') || '<div class="empty">None</div>'}</div>`;
 }
+// Close any open ⋯ menu when clicking elsewhere (or on one of its items).
+document.addEventListener('click', e => document.querySelectorAll('details.more[open]').forEach(d => { if (!d.contains(e.target) || e.target.closest('.menu')) d.open = false; }));
 function filt() { const q = $('#q').value.toLowerCase(); document.querySelectorAll('.tile').forEach(t => t.style.display = t.dataset.n.includes(q) ? '' : 'none'); }
 const sec = (name, on) => act(() => post('/api/sites/secure', { name, secure: on }), on ? `${name} now uses HTTPS` : `${name} now uses HTTP`).then(sites);
 const iso = (name, php) => act(() => post('/api/sites/isolate', { name, php }), php ? `${name} pinned to PHP ${php}` : `${name} follows the default PHP`).then(sites);
