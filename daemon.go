@@ -73,7 +73,7 @@ func initServices() {
 			}
 			return writeNginxConf()
 		},
-		procs:     func() []*Proc { return []*Proc{nginxProc} },
+		procs: func() []*Proc { return []*Proc{nginxProc} },
 	})
 	register(&ProcService{
 		name: "mysql", label: "MySQL",

@@ -887,16 +887,18 @@ func cmdDoctor() {
 		svc  string
 	}{{"HTTP", c.Ports.HTTP, "nginx"}, {"HTTPS", c.Ports.HTTPS, "nginx"}, {"MySQL", c.Ports.MySQL, "mysql"}, {"SMTP", c.Ports.SMTP, "mail"}} {
 		owner := portOwner(p.port)
-		free := owner == "" || portFree(p.port) == nil || (daemon &&(strings.EqualFold(owner, "nginx.exe") || strings.EqualFold(owner, "mysqld.exe") || strings.HasPrefix(strings.ToLower(owner), "cove")))
+		free := owner == "" || portFree(p.port) == nil || (daemon && (strings.EqualFold(owner, "nginx.exe") || strings.EqualFold(owner, "mysqld.exe") || strings.HasPrefix(strings.ToLower(owner), "cove")))
 		check(free, fmt.Sprintf("port %d (%s) available", p.port, p.name),
 			fmt.Sprintf("in use by %s — stop it (e.g. WAMP) or change ports.%s in %s", owner, strings.ToLower(p.name), configPath()))
 	}
 	fmt.Println()
 }
 
-// portOwner returns the process image listening on a TCP port, or "".
+// portOwner returns the process image listening on a TCP port where it would
+// clash with Cove (loopback or wildcard), or "". Listeners on other specific
+// addresses, like Tailscale on 100.x, are ignored, as portFree does.
 func portOwner(port int) string {
 	out, _ := hidden(exec.Command("powershell", "-NoProfile", "-Command",
-		fmt.Sprintf(`$c = Get-NetTCPConnection -State Listen -LocalPort %d -ErrorAction SilentlyContinue | Select-Object -First 1; if ($c) { (Get-Process -Id $c.OwningProcess).ProcessName + '.exe' }`, port))).Output()
+		fmt.Sprintf(`$c = Get-NetTCPConnection -State Listen -LocalPort %d -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -in '127.0.0.1','0.0.0.0','::','::1' } | Select-Object -First 1; if ($c) { (Get-Process -Id $c.OwningProcess).ProcessName + '.exe' }`, port))).Output()
 	return strings.TrimSpace(string(out))
 }

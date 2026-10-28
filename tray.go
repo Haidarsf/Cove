@@ -119,10 +119,10 @@ func onTrayReady() {
 	// Logs
 	mLogs := systray.AddMenuItem("Logs", "")
 	logLinks := map[*systray.MenuItem]string{
-		mLogs.AddSubMenuItem("nginx errors", ""):  "nginx-error",
-		mLogs.AddSubMenuItem("nginx access", ""):  "nginx-access",
-		mLogs.AddSubMenuItem("PHP errors", ""):    "php",
-		mLogs.AddSubMenuItem("MySQL", ""):         "mysql",
+		mLogs.AddSubMenuItem("nginx errors", ""): "nginx-error",
+		mLogs.AddSubMenuItem("nginx access", ""): "nginx-access",
+		mLogs.AddSubMenuItem("PHP errors", ""):   "php",
+		mLogs.AddSubMenuItem("MySQL", ""):        "mysql",
 		mLogs.AddSubMenuItem("Cove", ""):         "cove",
 	}
 	for item, name := range logLinks {
