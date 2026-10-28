@@ -62,6 +62,10 @@ func main() {
 		err = os.WriteFile(rest[0], iconPNG(true, 256), 0o644)
 	case "__hosts":
 		err = writeHosts()
+	case "__unsystem":
+		err = unsystem()
+	case "uninstall":
+		err = cmdUninstall(rest)
 	case "serve":
 		fmt.Println(cAccent + "Cove running in foreground — Ctrl+C to stop" + cReset)
 		runDaemon(false)
@@ -209,6 +213,7 @@ func usage() {
   cove autostart on|off         Launch Cove at Windows login
   cove trust | dns | hosts      Re-run CA trust / .test DNS rule / hosts-file fallback
   cove doctor                   Diagnose ports, DNS and certificates
+  cove uninstall                Remove Cove (asks before deleting databases and config)
 `, cAccent+cBold, appVersion, cReset, cBold, cReset, cBold, cReset, cBold, cReset, cBold, cReset, cBold, cReset)
 }
 
@@ -721,6 +726,7 @@ func cmdSetup() error {
 	if err := createShortcuts(); err == nil {
 		ok("Cove added to the Start menu and Desktop")
 	}
+	registerUninstall()
 
 	// 5. Laravel installer.
 	if fileExists(filepath.Join(binDir(), "composer.phar")) {

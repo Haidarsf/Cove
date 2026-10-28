@@ -372,6 +372,7 @@ func runDaemon(withTray bool) {
 	ensureSiteCerts()
 	writeShims()
 	writeNginxConf()
+	go registerUninstall() // keeps the Installed apps entry and its version current
 
 	ln, err := listenAPI()
 	if err != nil {

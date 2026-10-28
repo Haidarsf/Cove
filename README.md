@@ -62,6 +62,7 @@ cove logs [name] [-f] [-n 100]      cove logs php -f, cove logs nginx -f
 cove db [create|drop name]
 cove new my-app                     composer create-project laravel/laravel → my-app.test
 cove doctor | trust | dns | hosts | autostart on|off
+cove uninstall                      also under Settings → Apps; asks before deleting data
 ```
 
 ## Customising
