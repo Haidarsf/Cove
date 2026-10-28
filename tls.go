@@ -95,11 +95,10 @@ func issueSiteCert(host string) error {
 }
 
 // ensureSiteCerts (re)issues missing or soon-expiring certs for secured sites.
+// ensureSiteCerts gives every site a certificate: secured sites are served
+// with it, and HTTP-only ones use it to redirect https:// back to http://.
 func ensureSiteCerts() {
 	for _, s := range listSites() {
-		if !s.Secure {
-			continue
-		}
 		crt := filepath.Join(certDir(), s.Host+".crt")
 		if c, _, err := loadPair(crt, filepath.Join(certDir(), s.Host+".key")); err == nil && time.Until(c.NotAfter) > 30*24*time.Hour {
 			continue

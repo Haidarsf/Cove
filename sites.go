@@ -216,6 +216,12 @@ http {
 			b.WriteString(siteServer(s, names, listen(true), up, true))
 		} else {
 			b.WriteString(siteServer(s, names, listen(false), up, false))
+			// https:// on an HTTP-only site would otherwise get another site's
+			// certificate (a name-mismatch warning); send it back to http://.
+			if fileExists(filepath.Join(certDir(), s.Host+".crt")) {
+				fmt.Fprintf(&b, "\n    server {\n        %s\n        server_name %s;\n        ssl_certificate \"%s\";\n        ssl_certificate_key \"%s\";\n        return 302 http://$host%s$request_uri;\n    }\n",
+					listen(true), names, fwd(filepath.Join(certDir(), s.Host+".crt")), fwd(filepath.Join(certDir(), s.Host+".key")), portSuffix(c.Ports.HTTP, 80))
+			}
 		}
 	}
 	fmt.Fprintf(&b, "\n    include \"%s/*.conf\";\n}\n", fwd(dir("config", "nginx.d")))
