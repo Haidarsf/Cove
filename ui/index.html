@@ -310,6 +310,18 @@ function home() {
         ${x.installed ? `<button class="switch ${x.state === 'running' ? 'on' : ''}" aria-label="Toggle ${esc(x.label)}" onclick="svc('${x.name}','${x.state === 'running' ? 'stop' : 'start'}')"></button>` : '<span></span>'}
         ${x.error ? `<div class="err">${esc(x.error)}</div>` : ''}
       </div>`).join('')}</div>
+    <div class="label">Tools</div>
+    <div class="panel svc-list">${[
+      { name: 'node', glyph: 'JS', label: 'Node.js', version: s.node, desc: 'node, npm and npx on your PATH' },
+      { name: 'composer', glyph: 'CMP', label: 'Composer', version: s.composer && 'latest stable', desc: 'composer and laravel on your PATH' },
+    ].map(t => `
+      <div class="svc ${t.version ? 'running' : ''}">
+        <div class="glyph">${t.glyph}</div>
+        <div><div class="nm">${t.label}</div><div class="ver">${t.version ? esc(t.version) : 'not installed'}</div></div>
+        <div class="desc">${t.version ? t.desc : ''}</div>
+        <div class="acts" style="display:flex;justify-content:flex-end"><button class="btn sm ${t.version ? 'plain' : 'sea'}" onclick="install('${t.name}')">${t.version ? 'Update' : 'Install'}</button></div>
+        <span></span>
+      </div>`).join('')}</div>
     <div class="console" id="console"></div>
     <div class="label">Connect your app</div>
     <div class="panel kv">
