@@ -9,6 +9,7 @@ A fast, native local PHP stack for Windows 11, built as a modern replacement for
 | nginx | nginx.org (latest mainline) | HTTP/2, gzip, graceful reloads |
 | MySQL | Oracle CDN (latest release) | root / no password, utf8mb4 |
 | Composer | getcomposer.org (latest stable) | plus the global `laravel` installer |
+| Node.js | nodejs.org (latest LTS, SHA-256 verified) | `node`, `npm`, `npx`; any major line with `cove install node 22` |
 
 ## Laravel Herd–style features
 
@@ -52,7 +53,7 @@ cove up | down                      start/stop Cove + tray icon
 cove status                         services, versions, ports
 cove start|stop|restart [svc]       all | nginx | php | mysql | mail | dns
 cove php [8.4]                      list / switch default PHP (auto-installs)
-cove install php 8.3|nginx|mysql|composer
+cove install php 8.3|nginx|mysql|composer|node
 cove isolate 8.3 [site] / unisolate
 cove sites | park [dir] | link [name] | unlink
 cove secure [site] | unsecure [site]

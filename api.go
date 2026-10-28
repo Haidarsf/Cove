@@ -261,6 +261,7 @@ func apiStatus(w http.ResponseWriter, r *http.Request) {
 		"sites":       len(listSites()),
 		"mail_unread": unread,
 		"composer":    fileExists(filepath.Join(binDir(), "composer.phar")),
+		"node":        versionOf(nodeDir()),
 		"bin":         binDir(),
 	}, nil)
 }
@@ -396,6 +397,8 @@ func runInstall(what, branch string, w io.Writer) error {
 		return installMySQL(w)
 	case "composer":
 		return installComposer(w)
+	case "node":
+		return installNode(branch, w)
 	}
 	return fmt.Errorf("unknown component %q", what)
 }

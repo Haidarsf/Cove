@@ -54,14 +54,15 @@ func dir(parts ...string) string {
 	return p
 }
 
-func binDir() string            { return dir("bin") }
+func binDir() string              { return dir("bin") }
 func phpDir(branch string) string { return filepath.Join(Home(), "php", branch) }
-func nginxDir() string          { return filepath.Join(Home(), "nginx") }
-func mysqlDir() string          { return filepath.Join(Home(), "mysql") }
-func logDir() string            { return dir("logs") }
-func confDir() string           { return dir("config") }
-func certDir() string           { return dir("certs") }
-func dataDir(sub string) string { return dir("data", sub) }
+func nginxDir() string            { return filepath.Join(Home(), "nginx") }
+func mysqlDir() string            { return filepath.Join(Home(), "mysql") }
+func nodeDir() string             { return filepath.Join(Home(), "node") }
+func logDir() string              { return dir("logs") }
+func confDir() string             { return dir("config") }
+func certDir() string             { return dir("certs") }
+func dataDir(sub string) string   { return dir("data", sub) }
 
 func configPath() string { return filepath.Join(Home(), "config.json") }
 

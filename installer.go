@@ -216,6 +216,74 @@ func installComposer(w io.Writer) error {
 	return nil
 }
 
+// latestNode picks from the official nodejs.org feed (newest first): the newest
+// LTS by default, or the newest release of a major line ("22", "v22").
+func latestNode(major string) (string, error) {
+	body, err := getString("https://nodejs.org/dist/index.json")
+	if err != nil {
+		return "", err
+	}
+	var rels []struct {
+		Version string
+		Files   []string
+		LTS     any
+	}
+	if err := json.Unmarshal([]byte(body), &rels); err != nil {
+		return "", err
+	}
+	major = strings.TrimPrefix(major, "v")
+	for _, r := range rels {
+		if !containsStr(r.Files, "win-x64-zip") {
+			continue
+		}
+		if major == "" || major == "latest" {
+			if lts, _ := r.LTS.(string); lts != "" {
+				return r.Version, nil
+			}
+		} else if strings.HasPrefix(r.Version, "v"+major+".") {
+			return r.Version, nil
+		}
+	}
+	return "", fmt.Errorf("no Node.js %s release for Windows found", major)
+}
+
+func installNode(major string, w io.Writer) error {
+	v, err := latestNode(major)
+	if err != nil {
+		return err
+	}
+	name := fmt.Sprintf("node-%s-win-x64.zip", v)
+	sums, err := getString(fmt.Sprintf("https://nodejs.org/dist/%s/SHASUMS256.txt", v))
+	if err != nil {
+		return err
+	}
+	sha := ""
+	for _, line := range strings.Split(sums, "\n") {
+		if f := strings.Fields(line); len(f) == 2 && f[1] == name {
+			sha = f[0]
+		}
+	}
+	if sha == "" {
+		return fmt.Errorf("no checksum published for %s", name)
+	}
+	fmt.Fprintf(w, "→ Node.js %s\n", v)
+	zipPath, err := download(fmt.Sprintf("https://nodejs.org/dist/%s/%s", v, name), sha, w)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(zipPath)
+	os.RemoveAll(nodeDir())
+	if err := unzip(zipPath, nodeDir(), true); err != nil {
+		return err
+	}
+	os.WriteFile(filepath.Join(nodeDir(), "VERSION"), []byte(strings.TrimPrefix(v, "v")), 0o644)
+	writeShims()
+	// npm's default global prefix, so `npm i -g` tools (pnpm, vite…) run.
+	appendUserPath(filepath.Join(os.Getenv("APPDATA"), "npm"))
+	fmt.Fprintf(w, "✓ Node.js %s installed (node, npm, npx)\n", v)
+	return nil
+}
+
 // installCABundle fetches Mozilla's CA bundle (via curl.se) and appends the Cove
 // root so PHP's curl/openssl trust both the internet and local *.test sites.
 func installCABundle(w io.Writer) error {
@@ -370,7 +438,7 @@ func moveFile(src, dst string) error {
 	return os.WriteFile(dst, b, 0o644)
 }
 
-// writeShims puts php/composer/mysql/laravel wrappers in %LOCALAPPDATA%\Cove\bin,
+// writeShims puts php/composer/mysql/laravel/node wrappers in %LOCALAPPDATA%\Cove\bin,
 // which `cove setup` adds to the user PATH. php points at the default version.
 func writeShims() {
 	c := getConfig()
@@ -386,5 +454,11 @@ func writeShims() {
 	}
 	for _, tool := range []string{"mysql", "mysqldump", "mysqladmin"} {
 		shim(tool, fmt.Sprintf(`"%s" -P %d -h 127.0.0.1 %%*`, filepath.Join(mysqlDir(), "bin", tool+".exe"), c.Ports.MySQL))
+	}
+	// npm and npx are .cmd files themselves, so they need call to return here.
+	if fileExists(filepath.Join(nodeDir(), "node.exe")) {
+		shim("node", fmt.Sprintf(`"%s" %%*`, filepath.Join(nodeDir(), "node.exe")))
+		shim("npm", fmt.Sprintf(`call "%s" %%*`, filepath.Join(nodeDir(), "npm.cmd")))
+		shim("npx", fmt.Sprintf(`call "%s" %%*`, filepath.Join(nodeDir(), "npx.cmd")))
 	}
 }

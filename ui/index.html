@@ -468,10 +468,10 @@ function settings() {
   $('#view').innerHTML = `<div class="title"><div><h1>Settings</h1><p>Ports and the TLD live in <code>config.json</code>. Restart Cove after editing it.</p></div></div>
     <div class="panel kv">
       <div>Cove folder</div><div><a href="#" class="mono" onclick="reveal('${js(s.home)}');return false">${esc(s.home)}</a></div>
-      <div>CLI tools</div><div><a href="#" class="mono" onclick="reveal('${js(s.bin)}');return false">${esc(s.bin)}</a><div class="hint">php, composer, laravel, mysql and cove are on your PATH</div></div>
+      <div>CLI tools</div><div><a href="#" class="mono" onclick="reveal('${js(s.bin)}');return false">${esc(s.bin)}</a><div class="hint">php, composer, laravel, mysql, node, npm and cove are on your PATH</div></div>
       <div>Domain</div><div><code>.${esc(s.tld)}</code> · dashboard at <a href="http://cove.${esc(s.tld)}">cove.${esc(s.tld)}</a></div>
       <div>Ports</div><div class="mono">HTTP ${s.ports.http} · HTTPS ${s.ports.https} · MySQL ${s.ports.mysql} · SMTP ${s.ports.smtp} · DNS ${s.ports.dns} · UI ${s.ports.api}</div>
-      <div>Updates</div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="install('nginx')">Latest nginx</button><button class="btn sm" onclick="install('mysql')">Latest MySQL</button><button class="btn sm" onclick="install('composer')">${s.composer ? 'Update' : 'Install'} Composer</button></div>
+      <div>Updates</div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="install('nginx')">Latest nginx</button><button class="btn sm" onclick="install('mysql')">Latest MySQL</button><button class="btn sm" onclick="install('composer')">${s.composer ? 'Update' : 'Install'} Composer</button><button class="btn sm" onclick="install('node')">${s.node ? 'Update Node.js ' + esc(s.node) : 'Install Node.js'}</button></div>
     </div><div class="console" id="console"></div>
     <div class="label">Command line</div>
     <div class="panel kv">

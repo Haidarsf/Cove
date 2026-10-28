@@ -179,7 +179,7 @@ func usage() {
 	fmt.Printf(`%s≋ Cove %s%s  — fast local PHP dev environment for Windows
 
 %sGETTING STARTED%s
-  cove setup                    Download latest PHP, nginx, MySQL, Composer and configure everything
+  cove setup                    Download latest PHP, nginx, MySQL, Composer, Node.js and configure everything
   cove up | down                Start / stop Cove (tray icon + all services)
   cove dashboard                Open the web dashboard (also at http://cove.test)
 
@@ -205,6 +205,7 @@ func usage() {
 %sMORE%s
   cove db [create|drop <name>]  List or manage MySQL databases
   cove install nginx|mysql|composer   Upgrade a component to the latest release
+  cove install node [22]        Install Node.js (latest LTS, or the newest of a major line)
   cove autostart on|off         Launch Cove at Windows login
   cove trust | dns | hosts      Re-run CA trust / .test DNS rule / hosts-file fallback
   cove doctor                   Diagnose ports, DNS and certificates
@@ -336,7 +337,7 @@ func cmdStatus() error {
 
 func cmdInstall(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: cove install php [version] | nginx | mysql | composer")
+		return fmt.Errorf("usage: cove install php [version] | nginx | mysql | composer | node [major]")
 	}
 	branch := ""
 	if len(args) > 1 {
@@ -663,7 +664,7 @@ func cmdSetup() error {
 	if err := addToUserPath(bd); err != nil {
 		fmt.Println(cYellow + "! could not update PATH: " + err.Error() + cReset)
 	} else {
-		ok("Added " + bd + " to your PATH (open a new terminal to use php, composer, mysql, cove)")
+		ok("Added " + bd + " to your PATH (open a new terminal to use php, composer, mysql, node, cove)")
 	}
 
 	// 2. Binaries.
@@ -675,6 +676,7 @@ func cmdSetup() error {
 		{fileExists(filepath.Join(nginxDir(), "nginx.exe")), func() error { return installNginx(os.Stdout) }},
 		{fileExists(filepath.Join(mysqlDir(), "bin", "mysqld.exe")), func() error { return installMySQL(os.Stdout) }},
 		{fileExists(filepath.Join(binDir(), "composer.phar")), func() error { return installComposer(os.Stdout) }},
+		{fileExists(filepath.Join(nodeDir(), "node.exe")), func() error { return installNode("", os.Stdout) }},
 	}
 	for _, s := range steps {
 		if !s.have {
@@ -760,6 +762,26 @@ func addToUserPath(d string) error {
 		return nil
 	}
 	if err := k.SetExpandStringValue("Path", newPath); err != nil {
+		return err
+	}
+	broadcastEnvChange()
+	return nil
+}
+
+// appendUserPath adds d to the end of the user PATH if it isn't there yet.
+func appendUserPath(d string) error {
+	k, err := registry.OpenKey(registry.CURRENT_USER, `Environment`, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer k.Close()
+	cur, _, _ := k.GetStringValue("Path")
+	for _, p := range strings.Split(cur, ";") {
+		if strings.EqualFold(strings.TrimRight(p, `\`), strings.TrimRight(d, `\`)) {
+			return nil
+		}
+	}
+	if err := k.SetExpandStringValue("Path", strings.TrimRight(cur, ";")+";"+d); err != nil {
 		return err
 	}
 	broadcastEnvChange()
@@ -852,6 +874,11 @@ func cmdDoctor() {
 	check(len(installedPHP()) > 0, "PHP installed ("+strings.Join(installedPHP(), ", ")+")", "cove install php")
 	check(fileExists(filepath.Join(nginxDir(), "nginx.exe")), "nginx installed "+versionOf(nginxDir()), "cove install nginx")
 	check(fileExists(filepath.Join(mysqlDir(), "bin", "mysqld.exe")), "MySQL installed "+versionOf(mysqlDir()), "cove install mysql")
+	check(fileExists(filepath.Join(nodeDir(), "node.exe")), "Node.js installed "+versionOf(nodeDir()), "cove install node")
+	if node, err := exec.LookPath("node"); err == nil && fileExists(filepath.Join(nodeDir(), "node.exe")) {
+		// A system-wide Node (machine PATH) is found before Cove's user-PATH shim.
+		check(strings.EqualFold(filepath.Dir(node), binDir()), "node on PATH is Cove's", node+" comes first (system PATH wins) — uninstall that Node.js to use Cove's")
+	}
 	check(nrptInstalled(c.TLD), "*."+c.TLD+" DNS rule present", "cove dns")
 	daemon := running()
 	for _, p := range []struct {
