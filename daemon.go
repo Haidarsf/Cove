@@ -355,7 +355,9 @@ func prepareMySQL() error {
 basedir="%s"
 datadir="%s"
 port=%d
-bind-address=127.0.0.1
+# ::1 too: on Windows "localhost" tries IPv6 first, and a refused ::1
+# connect costs ~2s before falling back — on every page load.
+bind-address=127.0.0.1,::1
 mysqlx=OFF
 character-set-server=utf8mb4
 max_allowed_packet=256M
