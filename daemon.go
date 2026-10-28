@@ -1,0 +1,418 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+)
+
+var (
+	services   []Service
+	serviceMap = map[string]Service{}
+
+	phpMu     sync.Mutex
+	phpPools  = map[string][]*Proc{}
+	phpWanted bool
+
+	reconcileMu sync.Mutex
+)
+
+func initServices() {
+	c := getConfig()
+
+	nginxProc := &Proc{
+		Name: "nginx",
+		Log:  filepath.Join(logDir(), "nginx.log"),
+		Build: func() *exec.Cmd {
+			return exec.Command(filepath.Join(nginxDir(), "nginx.exe"), "-p", nginxPrefix()+`\`, "-c", nginxConfPath())
+		},
+		Stop: func(p *Proc) { nginxSignal("quit") },
+	}
+	mysqlProc := &Proc{
+		Name: "mysql",
+		Log:  filepath.Join(logDir(), "mysql.log"),
+		Build: func() *exec.Cmd {
+			return exec.Command(filepath.Join(mysqlDir(), "bin", "mysqld.exe"), "--defaults-file="+myIniPath(), "--console")
+		},
+		Stop: func(p *Proc) {
+			err := hidden(exec.Command(filepath.Join(mysqlDir(), "bin", "mysqladmin.exe"), "-u", "root", "-h", "127.0.0.1",
+				"-P", fmt.Sprint(getConfig().Ports.MySQL), "shutdown")).Run()
+			if err != nil {
+				killTree(p.Pid()) // graceful shutdown refused; InnoDB recovers on next start
+			}
+		},
+	}
+
+	register(&FuncService{name: "dns", label: "DNS (." + c.TLD + ")", port: fmt.Sprint(c.Ports.DNS), start: startDNS, stop: stopDNS})
+	register(&ProcService{
+		name: "php", label: "PHP",
+		installed: func() bool { return len(installedPHP()) > 0 },
+		version:   func() string { return strings.Join(branchesInUse(), ", ") },
+		port:      func() string { return "FastCGI" },
+		pre:       func() error { phpMu.Lock(); phpWanted = true; phpMu.Unlock(); syncPHPPools(); return nil },
+		procs:     allPHPProcs,
+	})
+	register(&ProcService{
+		name: "nginx", label: "nginx",
+		installed: func() bool { return fileExists(filepath.Join(nginxDir(), "nginx.exe")) },
+		version:   func() string { return versionOf(nginxDir()) },
+		port:      func() string { c := getConfig(); return fmt.Sprintf("%d, %d", c.Ports.HTTP, c.Ports.HTTPS) },
+		pre: func() error {
+			c := getConfig()
+			if err := portFree(c.Ports.HTTP, c.Ports.HTTPS); err != nil {
+				return err
+			}
+			return writeNginxConf()
+		},
+		procs:     func() []*Proc { return []*Proc{nginxProc} },
+	})
+	register(&ProcService{
+		name: "mysql", label: "MySQL",
+		installed: func() bool { return fileExists(filepath.Join(mysqlDir(), "bin", "mysqld.exe")) },
+		version:   func() string { return versionOf(mysqlDir()) },
+		port:      func() string { return fmt.Sprint(getConfig().Ports.MySQL) },
+		pre:       prepareMySQL,
+		procs:     func() []*Proc { return []*Proc{mysqlProc} },
+	})
+	register(&FuncService{name: "mail", label: "Mail", port: fmt.Sprint(c.Ports.SMTP), start: startSMTP, stop: stopSMTP})
+}
+
+func register(s Service) {
+	services = append(services, s)
+	serviceMap[s.Name()] = s
+}
+
+func allPHPProcs() []*Proc {
+	phpMu.Lock()
+	defer phpMu.Unlock()
+	var out []*Proc
+	keys := make([]string, 0, len(phpPools))
+	for k := range phpPools {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		out = append(out, phpPools[k]...)
+	}
+	return out
+}
+
+// syncPHPPools starts pools for versions now in use and stops ones no longer needed.
+func syncPHPPools() {
+	want := map[string]bool{}
+	for _, v := range branchesInUse() {
+		want[v] = true
+	}
+	phpMu.Lock()
+	running := phpWanted
+	var stop [][]*Proc
+	for v, procs := range phpPools {
+		if !want[v] || !running {
+			stop = append(stop, procs)
+			delete(phpPools, v)
+		}
+	}
+	var start []*Proc
+	if running {
+		for v := range want {
+			if _, ok := phpPools[v]; !ok {
+				writePHPIni(v)
+				phpPools[v] = newPHPPool(v)
+				start = append(start, phpPools[v]...)
+			}
+		}
+	}
+	phpMu.Unlock()
+	for _, procs := range stop {
+		for _, p := range procs {
+			p.StopAndWait()
+		}
+	}
+	for _, p := range start {
+		p.Start()
+	}
+}
+
+func startService(name string) error {
+	if name == "all" {
+		var errs []string
+		for _, s := range services {
+			if s.Status().Installed {
+				if err := s.Start(); err != nil {
+					errs = append(errs, err.Error())
+				}
+			}
+		}
+		if len(errs) > 0 {
+			return fmt.Errorf("%s", strings.Join(errs, "; "))
+		}
+		return nil
+	}
+	s, ok := serviceMap[name]
+	if !ok {
+		return fmt.Errorf("unknown service %q", name)
+	}
+	log.Printf("starting %s", name)
+	return s.Start()
+}
+
+func stopService(name string) error {
+	if name == "all" {
+		for i := len(services) - 1; i >= 0; i-- {
+			stopService(services[i].Name())
+		}
+		return nil
+	}
+	s, ok := serviceMap[name]
+	if !ok {
+		return fmt.Errorf("unknown service %q", name)
+	}
+	log.Printf("stopping %s", name)
+	if name == "php" {
+		phpMu.Lock()
+		phpWanted = false
+		phpMu.Unlock()
+		s.Stop()
+		syncPHPPools()
+		return nil
+	}
+	s.Stop()
+	return nil
+}
+
+func restartService(name string) error {
+	if name == "nginx" && serviceMap["nginx"].Status().State == "running" {
+		return reloadNginx()
+	}
+	stopService(name)
+	return startService(name)
+}
+
+// reconcile regenerates config after any change (site linked, secured, PHP switched)
+// and applies it with a graceful nginx reload — no dropped requests.
+func reconcile() error {
+	reconcileMu.Lock()
+	defer reconcileMu.Unlock()
+	ensureSiteCerts()
+	syncPHPPools()
+	writeShims()
+	if err := writeNginxConf(); err != nil {
+		return err
+	}
+	if serviceMap["nginx"].Status().State == "running" {
+		return reloadNginx()
+	}
+	return nil
+}
+
+func nginxSignal(sig string) error {
+	out, err := hidden(exec.Command(filepath.Join(nginxDir(), "nginx.exe"), "-p", nginxPrefix()+`\`, "-c", nginxConfPath(), "-s", sig)).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("nginx -s %s: %s", sig, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func reloadNginx() error {
+	out, err := hidden(exec.Command(filepath.Join(nginxDir(), "nginx.exe"), "-p", nginxPrefix()+`\`, "-c", nginxConfPath(), "-t")).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("nginx config test failed: %s", strings.TrimSpace(string(out)))
+	}
+	if err := nginxSignal("reload"); err != nil {
+		return err
+	}
+	// Reload is asynchronous on Windows; give new workers a moment so the
+	// very next request already sees the change.
+	time.Sleep(400 * time.Millisecond)
+	return nil
+}
+
+// ---------- MySQL ----------
+
+func myIniPath() string { return filepath.Join(confDir(), "my.ini") }
+
+// portFree fails if something else would receive our loopback traffic: a
+// listener on 127.0.0.1/::1, or a wildcard (0.0.0.0/::) one — Windows lets our
+// 127.0.0.1 bind coexist with another program's wildcard bind, silently
+// splitting traffic (e.g. WAMP's MariaDB). Listeners on other specific IPs,
+// like Tailscale on its 100.x address, don't overlap and are fine.
+func portFree(ports ...int) error {
+	for _, p := range ports {
+		conflict := false
+		if ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p)); err != nil {
+			conflict = true
+		} else {
+			ln.Close()
+		}
+		for _, a := range listenAddrs(p) {
+			if a == "0.0.0.0" || a == "[::]" || a == "127.0.0.1" || a == "[::1]" {
+				conflict = true
+			}
+		}
+		if conflict {
+			owner := portOwner(p)
+			if owner == "" {
+				owner = "another program (WAMP/XAMPP/IIS service?)"
+			}
+			return fmt.Errorf("port %d is used by %s — stop it or change ports in %s", p, owner, configPath())
+		}
+	}
+	return nil
+}
+
+// listenAddrs lists the local addresses with a TCP listener on port, via netstat.
+func listenAddrs(port int) []string {
+	out, _ := hidden(exec.Command("netstat", "-ano", "-p", "TCP")).Output()
+	out6, _ := hidden(exec.Command("netstat", "-ano", "-p", "TCPv6")).Output()
+	var addrs []string
+	suffix := fmt.Sprintf(":%d", port)
+	for _, line := range strings.Split(string(out)+"\n"+string(out6), "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 4 && f[3] == "LISTENING" && strings.HasSuffix(f[1], suffix) {
+			addrs = append(addrs, strings.TrimSuffix(f[1], suffix))
+		}
+	}
+	return addrs
+}
+
+func prepareMySQL() error {
+	c := getConfig()
+	if err := portFree(c.Ports.MySQL); err != nil {
+		return err
+	}
+	data := filepath.Join(Home(), "data", "mysql")
+	ini := fmt.Sprintf(`# Generated by Cove
+[mysqld]
+basedir="%s"
+datadir="%s"
+port=%d
+bind-address=127.0.0.1
+mysqlx=OFF
+character-set-server=utf8mb4
+max_allowed_packet=256M
+innodb_buffer_pool_size=256M
+innodb_flush_log_at_trx_commit=2
+skip-name-resolve
+secure-file-priv=""
+
+[client]
+port=%d
+default-character-set=utf8mb4
+`, fwd(mysqlDir()), fwd(data), c.Ports.MySQL, c.Ports.MySQL)
+	if extra, err := os.ReadFile(filepath.Join(confDir(), "my.local.ini")); err == nil {
+		ini += "\n" + string(extra)
+	}
+	if err := os.WriteFile(myIniPath(), []byte(ini), 0o644); err != nil {
+		return err
+	}
+	if fileExists(filepath.Join(data, "mysql.ibd")) {
+		return nil
+	}
+	log.Printf("initializing MySQL data directory (first run)")
+	os.MkdirAll(filepath.Dir(data), 0o755)
+	os.RemoveAll(data)
+	// skip-name-resolve means 127.0.0.1 doesn't match root@localhost, so give
+	// root password-less accounts for the loopback IPs too (what DB_HOST uses).
+	initSQL := filepath.Join(confDir(), "mysql-init.sql")
+	os.WriteFile(initSQL, []byte(
+		"CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY '';\n"+
+			"GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;\n"+
+			"CREATE USER IF NOT EXISTS 'root'@'::1' IDENTIFIED BY '';\n"+
+			"GRANT ALL PRIVILEGES ON *.* TO 'root'@'::1' WITH GRANT OPTION;\n"), 0o644)
+	defer os.Remove(initSQL)
+	out, err := hidden(exec.Command(filepath.Join(mysqlDir(), "bin", "mysqld.exe"), "--defaults-file="+myIniPath(),
+		"--initialize-insecure", "--init-file="+initSQL, "--console")).CombinedOutput()
+	os.WriteFile(filepath.Join(logDir(), "mysql-init.log"), out, 0o644)
+	if err != nil {
+		return fmt.Errorf("mysql init failed — see logs/mysql-init.log")
+	}
+	return nil
+}
+
+func mysqlExec(sql string) (string, error) {
+	out, err := hidden(exec.Command(filepath.Join(mysqlDir(), "bin", "mysql.exe"), "-u", "root", "-h", "127.0.0.1",
+		"-P", fmt.Sprint(getConfig().Ports.MySQL), "-N", "-B", "-e", sql)).CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+	return string(out), nil
+}
+
+// ---------- lifecycle ----------
+
+func runDaemon(withTray bool) {
+	os.MkdirAll(Home(), 0o755)
+	lf, _ := os.OpenFile(filepath.Join(logDir(), "cove.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if lf != nil {
+		log.SetOutput(lf)
+	}
+	log.SetFlags(log.LstdFlags)
+	initJob()
+	loadConfig()
+	saveConfig()
+	if _, _, err := ensureCA(); err != nil {
+		log.Printf("CA: %v", err)
+	}
+	if !fileExists(filepath.Join(certDir(), "cacert.pem")) {
+		rebuildCABundle()
+	}
+	for _, v := range installedPHP() {
+		writePHPIni(v)
+	}
+	initServices()
+	ensureSiteCerts()
+	writeShims()
+	writeNginxConf()
+
+	ln, err := listenAPI()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Cove is already running (API port in use).")
+		os.Exit(1)
+	}
+	go serveAPI(ln)
+	log.Printf("Cove %s started, dashboard http://127.0.0.1:%d", appVersion, getConfig().Ports.API)
+
+	go func() {
+		for _, name := range []string{"dns", "mail", "php", "mysql", "nginx"} {
+			for _, a := range getConfig().Autostart {
+				if a == name && serviceMap[name].Status().Installed {
+					if err := startService(name); err != nil {
+						log.Printf("autostart %s: %v", name, err)
+					}
+				}
+			}
+		}
+	}()
+
+	if withTray {
+		runTray() // blocks until Quit
+	} else {
+		waitForSignal()
+	}
+	shutdown()
+}
+
+var shutdownOnce sync.Once
+
+func shutdown() {
+	shutdownOnce.Do(func() {
+		log.Printf("shutting down")
+		stopService("all")
+		time.Sleep(200 * time.Millisecond)
+	})
+}
+
+func openURL(u string) {
+	hidden(exec.Command("rundll32", "url.dll,FileProtocolHandler", u)).Start()
+}
+
+func revealPath(p string) {
+	exec.Command("explorer.exe", p).Start()
+}
