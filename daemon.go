@@ -426,6 +426,7 @@ func runDaemon(withTray bool) {
 		os.Exit(1)
 	}
 	go serveAPI(ln)
+	go watchSites()
 	log.Printf("Cove %s started, dashboard http://127.0.0.1:%d", appVersion, getConfig().Ports.API)
 
 	go func() {

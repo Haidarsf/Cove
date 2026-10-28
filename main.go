@@ -599,7 +599,7 @@ func cmdDB(args []string) error {
 			_, err = call("DELETE", "/api/db/"+args[1], nil)
 		}
 		if err == nil {
-			ok(fmt.Sprintf("Database %s %sd", args[1], args[0]))
+			ok(fmt.Sprintf("Database %s %s", args[1], map[string]string{"create": "created", "drop": "dropped"}[args[0]]))
 		}
 		return err
 	}

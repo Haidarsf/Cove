@@ -326,7 +326,7 @@ function home() {
     <div class="console" id="console"></div>
     <div class="label">Connect your app</div>
     <div class="panel kv">
-      <div>Database</div><div><code>DB_HOST=127.0.0.1</code> <code>DB_PORT=${s.ports.mysql}</code> <code>DB_USERNAME=root</code> <code>DB_PASSWORD=</code></div>
+      <div>Database</div><div><code>DB_HOST=127.0.0.1</code> <code>DB_PORT=${s.ports.mysql}</code> <code>DB_USERNAME=root</code> <code>DB_PASSWORD=</code><div class="hint">The <code>DB_DATABASE</code> in a site's .env is created automatically</div></div>
       <div>Mail</div><div><code>MAIL_HOST=127.0.0.1</code> <code>MAIL_PORT=${s.ports.smtp}</code></div>
       <div>Redis</div><div><code>REDIS_CLIENT=predis</code> <code>REDIS_HOST=127.0.0.1</code> <code>REDIS_PORT=${s.ports.redis}</code><div class="hint">PHP for Windows has no phpredis extension, so run <code>composer require predis/predis</code></div></div>
       <div>New project</div><div><code>cove new my-app</code> → http://my-app.${esc(s.tld)}</div>

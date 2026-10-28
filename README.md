@@ -8,7 +8,8 @@ A fast, native local PHP stack for Windows 11, built as a modern replacement for
 | PHP 8.1 – 8.5 | windows.php.net release feed (SHA-256 verified) | NTS x64, several versions side by side, OPcache + JIT |
 | nginx | nginx.org (latest mainline) | HTTP/2, gzip, graceful reloads |
 | MySQL | Oracle CDN (latest release) | root / no password, utf8mb4 |
-| Redis | redis-windows builds of upstream Redis (SHA-256 verified) | 127.0.0.1:6379, persisted to `dataedis` |
+| Redis | redis-windows builds of upstream Redis (SHA-256 verified) | 127.0.0.1:6379, persisted to `data
+edis` |
 | Composer | getcomposer.org (latest stable) | plus the global `laravel` installer |
 | Node.js | nodejs.org (latest LTS, SHA-256 verified) | `node`, `npm`, `npx`; any major line with `cove install node 22` |
 
@@ -25,6 +26,7 @@ A fast, native local PHP stack for Windows 11, built as a modern replacement for
 - **Tray app**: start and stop services, switch PHP, open sites, view logs and mail, and set start-at-login.
 - **Dashboard**: `http://cove.test`, also at `http://127.0.0.1:7771`.
 - Framework detection (Laravel, Symfony, WordPress, Craft, static) and `public/` roots are handled automatically.
+- **Automatic databases**: when a site's `.env` points at Cove's MySQL, its `DB_DATABASE` is created for you. New folders in a parked directory are served within seconds.
 
 ## Build
 
