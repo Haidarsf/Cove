@@ -96,6 +96,7 @@ select { padding: 6px 12px; border-radius: 10px; }
 .svc-list .svc:last-child { border-bottom: 0; }
 .svc .glyph { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--surface-2); font: 700 13px var(--mono); color: var(--ink-2); }
 .svc.running .glyph { background: var(--sea-soft); color: var(--sea); }
+.svc .glyph svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .svc .nm { font-weight: 650; }
 .svc .ver { color: var(--ink-3); font-size: 12.5px; }
 .svc .desc { color: var(--ink-2); font-size: 13px; }
@@ -272,7 +273,19 @@ async function refresh() {
 }
 
 // ---------- Home ----------
-const GLYPH = { dns: 'DNS', php: 'PHP', nginx: 'NGX', mysql: 'SQL', redis: 'RDS', postgres: 'PG', mail: 'SMTP' };
+// Line icons for services and tools (24px grid, stroked with currentColor).
+const GLYPH = {
+  dns: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9M12 3C9.5 5.6 8.2 8.6 8.2 12s1.3 6.4 3.8 9"/>',
+  php: '<path d="M8 7l-5 5 5 5M16 7l5 5-5 5M13.5 4l-3 16"/>',
+  nginx: '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6"/>',
+  mysql: '<ellipse cx="12" cy="5.5" rx="8" ry="2.8"/><path d="M4 5.5v13c0 1.5 3.6 2.8 8 2.8s8-1.3 8-2.8v-13M4 12c0 1.5 3.6 2.8 8 2.8s8-1.3 8-2.8"/>',
+  redis: '<path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12z"/>',
+  postgres: '<ellipse cx="12" cy="5.5" rx="8" ry="2.8"/><path d="M4 5.5v13c0 1.5 3.6 2.8 8 2.8s8-1.3 8-2.8v-13"/><path d="M8 11.5h8M8 15.5h8M12 9v9"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6 8.5-6"/>',
+  node: '<path d="M12 2.5 20.5 7.3v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M10.2 9.5 7.8 12l2.4 2.5M13.8 9.5l2.4 2.5-2.4 2.5"/>',
+  composer: '<path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9M7.8 5.3l8.5 4.5"/>',
+};
+const glyph = (name, label) => GLYPH[name] ? `<svg viewBox="0 0 24 24" aria-hidden="true">${GLYPH[name]}</svg>` : esc(label || '•');
 const DESC = {
   dns: s => `Answers *.${status.tld} with 127.0.0.1`,
   php: s => `FastCGI pools · ${s.version ? 'PHP ' + s.version : 'idle'}`,
@@ -308,7 +321,7 @@ function home() {
     <div class="label">Services</div>
     <div class="panel svc-list">${s.services.map(x => `
       <div class="svc ${x.state}">
-        <div class="glyph">${GLYPH[x.name] || '•'}</div>
+        <div class="glyph" title="${esc(x.label)}">${glyph(x.name, x.label[0])}</div>
         <div><div class="nm">${esc(x.label)}</div><div class="ver">${x.installed ? esc(x.version === 'built-in' ? 'built in' : x.version || '') : 'not installed'}</div></div>
         <div class="desc">${x.installed ? esc(DESC[x.name](x)) : ''}</div>
         <div class="acts" style="display:flex;gap:6px;align-items:center;justify-content:flex-end"><span class="state ${x.state}">${x.state}${x.state === 'running' && x.uptime ? ' · ' + ago(x.uptime) : ''}</span>
@@ -322,7 +335,7 @@ function home() {
       { name: 'composer', glyph: 'CMP', label: 'Composer', version: s.composer && 'latest stable', desc: 'composer and laravel on your PATH' },
     ].map(t => `
       <div class="svc ${t.version ? 'running' : ''}">
-        <div class="glyph">${t.glyph}</div>
+        <div class="glyph" title="${t.label}">${glyph(t.name, t.glyph)}</div>
         <div><div class="nm">${t.label}</div><div class="ver">${t.version ? esc(t.version) : 'not installed'}</div></div>
         <div class="desc">${t.version ? t.desc : ''}</div>
         <div class="acts" style="display:flex;justify-content:flex-end"><button class="btn sm ${t.version ? 'plain' : 'sea'}" onclick="install('${t.name}')">${t.version ? 'Update' : 'Install'}</button></div>
