@@ -68,7 +68,8 @@ code { background: var(--sea-soft); color: var(--deep); padding: 1px 7px; border
 .btn.warn:hover { color: var(--coral); box-shadow: inset 0 0 0 1px var(--coral); }
 input[type=text], select { background: var(--surface); border: 0; box-shadow: inset 0 0 0 1px var(--line); border-radius: 999px; padding: 8px 16px; outline: none; }
 input[type=text]:focus, select:focus { box-shadow: inset 0 0 0 2px var(--sea-2); }
-select { padding: 6px 12px; border-radius: 10px; }
+select { padding: 6px 34px 6px 12px; border-radius: 10px; cursor: pointer; appearance: none; -webkit-appearance: none;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237c9391' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center / 14px; }
 
 .panel { background: var(--surface); border-radius: var(--r); box-shadow: var(--shadow); }
 .label { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin: 34px 0 12px; }
@@ -132,7 +133,8 @@ select { padding: 6px 12px; border-radius: 10px; }
 .tile .open { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: var(--ink-3); flex: none; }
 .tile .open:hover { background: var(--surface-2); color: var(--sea); }
 .tile .open svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.tile select.php { width: 100%; }
+.tile select.php { margin-left: auto; padding: 3px 28px 3px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--ink-2); background-position: right 9px center; background-size: 12px; }
+.tile select.php.pinned { color: var(--sea); box-shadow: inset 0 0 0 1px var(--sea-2); }
 .tile .foot .sp { flex: 1; }
 .tile .tog { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
 .switch.sm { width: 34px; height: 20px; }
@@ -406,8 +408,8 @@ async function sites() {
           <a class="open" href="${esc(s.url)}" target="_blank" title="Open in browser" aria-label="Open ${esc(s.host)}"><svg viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></svg></a></div>
         <div class="meta"><span class="chip ${s.framework === 'Laravel' ? 'lv' : s.framework === 'WordPress' ? 'wp' : ''}">${esc(s.framework)}</span>
           ${s.secure ? '<span class="chip tls">HTTPS</span>' : ''}${s.linked ? '<span class="chip">linked</span>' : ''}
-          ${s.share ? `<a class="chip tls" href="${esc(s.share)}" target="_blank" title="Public link. Anyone can open it">shared · ${esc(s.share.replace('https://', '').split('.')[0])}</a>` : ''}</div>
-        <select class="php" title="PHP version" onchange="iso('${s.name}',this.value)"><option value="">PHP ${esc(status.default_php)} (default)</option>${vers.map(v => `<option value="${v}" ${s.isolated && s.php === v ? 'selected' : ''}>PHP ${v} (pinned)</option>`).join('')}</select>
+          ${s.share ? `<a class="chip tls" href="${esc(s.share)}" target="_blank" title="Public link. Anyone can open it">shared · ${esc(s.share.replace('https://', '').split('.')[0])}</a>` : ''}
+          <select class="php ${s.isolated ? 'pinned' : ''}" title="${s.isolated ? 'Pinned to PHP ' + esc(s.php) : 'Follows the default PHP'}" onchange="iso('${s.name}',this.value)"><option value="">PHP ${esc(status.default_php)}</option>${vers.map(v => `<option value="${v}" ${s.isolated && s.php === v ? 'selected' : ''}>PHP ${v}</option>`).join('')}</select></div>
         <div class="foot">
           <label class="tog" title="${s.secure ? 'Served over HTTPS' : 'Served over HTTP'}">HTTPS <button class="switch sm ${s.secure ? 'on' : ''}" aria-label="HTTPS for ${esc(s.host)}" onclick="sec('${s.name}',${!s.secure})"></button></label>
           <span class="sp"></span>
