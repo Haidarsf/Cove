@@ -105,6 +105,20 @@ func initServices() {
 		pre:       prepareRedis,
 		procs:     func() []*Proc { return []*Proc{redisProc} },
 	})
+	pgProc := &Proc{
+		Name:  "postgres",
+		Log:   filepath.Join(logDir(), "postgres.log"),
+		Build: postgresCmd,
+		Stop:  stopPostgres,
+	}
+	register(&ProcService{
+		name: "postgres", label: "PostgreSQL",
+		installed: func() bool { return fileExists(pgBin("postgres")) },
+		version:   func() string { return versionOf(pgDir()) },
+		port:      func() string { return fmt.Sprint(getConfig().Ports.Postgres) },
+		pre:       preparePostgres,
+		procs:     func() []*Proc { return []*Proc{pgProc} },
+	})
 	register(&FuncService{name: "mail", label: "Mail", port: fmt.Sprint(c.Ports.SMTP), start: startSMTP, stop: stopSMTP})
 }
 
@@ -417,6 +431,7 @@ func runDaemon(withTray bool) {
 	initServices()
 	ensureSiteCerts()
 	migrateNodeLayout()
+	cleanOldExes()
 	writeShims()
 	writeNginxConf()
 	go registerUninstall() // keeps the Installed apps entry and its version current
@@ -428,10 +443,11 @@ func runDaemon(withTray bool) {
 	}
 	go serveAPI(ln)
 	go watchSites()
+	go startDumpServer()
 	log.Printf("Cove %s started, dashboard http://127.0.0.1:%d", appVersion, getConfig().Ports.API)
 
 	go func() {
-		for _, name := range []string{"dns", "mail", "php", "mysql", "redis", "nginx"} {
+		for _, name := range []string{"dns", "mail", "php", "mysql", "redis", "postgres", "nginx"} {
 			for _, a := range getConfig().Autostart {
 				if a == name && serviceMap[name].Status().Installed {
 					if err := startService(name); err != nil {
@@ -455,6 +471,7 @@ var shutdownOnce sync.Once
 func shutdown() {
 	shutdownOnce.Do(func() {
 		log.Printf("shutting down")
+		stopAllShares()
 		stopService("all")
 		time.Sleep(200 * time.Millisecond)
 	})

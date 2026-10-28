@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -271,6 +272,7 @@ func onTrayReady() {
 					}
 				}
 			case <-mQuit.ClickedCh:
+				log.Printf("quit from the tray menu")
 				systray.SetTooltip("Cove — stopping…")
 				shutdown()
 				quit()

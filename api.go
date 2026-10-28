@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -38,6 +39,7 @@ func serveAPI(ln net.Listener) {
 	mux.HandleFunc("POST /api/services/{name}/{action}", apiService)
 	mux.HandleFunc("POST /api/reload", func(w http.ResponseWriter, r *http.Request) { reply(w, nil, reconcile()) })
 	mux.HandleFunc("POST /api/quit", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("quit requested via the API (%s)", r.UserAgent())
 		shutdown() // stop services before replying so `cove down` means everything is down
 		reply(w, map[string]bool{"ok": true}, nil)
 		go func() { time.Sleep(100 * time.Millisecond); quit() }()
@@ -74,6 +76,12 @@ func serveAPI(ln net.Listener) {
 		})
 	}))
 	mux.HandleFunc("POST /api/sites/open", siteAction(func(s Site, _ map[string]any) error { openURL(s.URL); return nil }))
+	mux.HandleFunc("POST /api/sites/share", siteAction(func(s Site, body map[string]any) error {
+		if on, _ := body["share"].(bool); on {
+			return startShare(s)
+		}
+		return stopShare(s.Name)
+	}))
 	mux.HandleFunc("POST /api/sites/reveal", siteAction(func(s Site, _ map[string]any) error { revealPath(s.Path); return nil }))
 	mux.HandleFunc("POST /api/paths", apiPaths)
 	mux.HandleFunc("POST /api/open", func(w http.ResponseWriter, r *http.Request) {
@@ -168,6 +176,43 @@ func serveAPI(ln net.Listener) {
 			return
 		}
 		_, err := mysqlExec("DROP DATABASE IF EXISTS `" + name + "`")
+		reply(w, map[string]bool{"ok": err == nil}, err)
+	})
+
+	mux.HandleFunc("GET /api/update", func(w http.ResponseWriter, r *http.Request) {
+		rel, err := checkUpdate()
+		reply(w, rel, err)
+	})
+	mux.HandleFunc("POST /api/update", apiUpdate)
+	mux.HandleFunc("GET /api/dumps", func(w http.ResponseWriter, r *http.Request) { reply(w, listDumps(), nil) })
+	mux.HandleFunc("GET /api/dumps/stream", apiDumpStream)
+	mux.HandleFunc("DELETE /api/dumps", func(w http.ResponseWriter, r *http.Request) { clearDumps(); reply(w, nil, nil) })
+	mux.HandleFunc("POST /api/dumps/capture", func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ On bool }
+		json.NewDecoder(r.Body).Decode(&body)
+		reply(w, nil, changeConfig(func(c *Config) { c.CaptureDumps = body.On }))
+	})
+	mux.HandleFunc("GET /api/pg", func(w http.ResponseWriter, r *http.Request) {
+		dbs, err := listPostgresDBs()
+		reply(w, dbs, err)
+	})
+	mux.HandleFunc("POST /api/pg", func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Name string }
+		json.NewDecoder(r.Body).Decode(&body)
+		if !dbNameRe.MatchString(body.Name) {
+			reply(w, nil, fmt.Errorf("database names may contain letters, digits, _ and -"))
+			return
+		}
+		_, err := createPostgresDB(body.Name)
+		reply(w, map[string]bool{"ok": err == nil}, err)
+	})
+	mux.HandleFunc("DELETE /api/pg/{name}", func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		if !dbNameRe.MatchString(name) || name == "postgres" || strings.HasPrefix(name, "template") {
+			reply(w, nil, fmt.Errorf("refusing to drop %q", name))
+			return
+		}
+		_, err := pgExec(`DROP DATABASE IF EXISTS "` + name + `" WITH (FORCE)`)
 		reply(w, map[string]bool{"ok": err == nil}, err)
 	})
 
@@ -272,6 +317,7 @@ func apiStatus(w http.ResponseWriter, r *http.Request) {
 		"composer":      fileExists(filepath.Join(binDir(), "composer.phar")),
 		"node":          versionOf(nodeVersionDir(c.DefaultNode)),
 		"node_versions": nodeVersions(c.DefaultNode),
+		"capture_dumps": c.CaptureDumps,
 		"bin":           binDir(),
 	}, nil)
 }
@@ -408,6 +454,9 @@ func runInstall(what, branch string, w io.Writer) error {
 	case "redis":
 		pause("redis")
 		return installRedis(w)
+	case "postgres":
+		pause("postgres")
+		return installPostgres(w)
 	case "composer":
 		return installComposer(w)
 	case "node":

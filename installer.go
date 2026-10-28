@@ -471,38 +471,73 @@ func (p *progress) Write(b []byte) (int, error) {
 
 func mb(n int64) float64 { return float64(n) / 1024 / 1024 }
 
+// download fetches url into tmp\dl-<hash of url>.part. An interrupted
+// download is kept and resumed with a Range request on the next try, so a
+// big file on a slow line isn't started over.
 func download(url, sha string, w io.Writer) (string, error) {
+	sum := sha256.Sum256([]byte(url))
+	part := filepath.Join(dir("tmp"), "dl-"+hex.EncodeToString(sum[:8])+".part")
+	h := sha256.New()
+	var have int64
+	if f, err := os.Open(part); err == nil {
+		have, _ = io.Copy(h, f) // re-hash what we already have
+		f.Close()
+	}
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("User-Agent", "Cove/"+appVersion)
+	if have > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", have))
+	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
+	flags := os.O_CREATE | os.O_WRONLY | os.O_APPEND
+	switch {
+	case resp.StatusCode == 206 && have > 0:
+		fmt.Fprintf(w, "  resuming at %.1f MB\n", mb(have))
+	case resp.StatusCode == 416 && have > 0: // already complete
+		resp.Body.Close()
+		resp = &http.Response{Body: io.NopCloser(strings.NewReader("")), ContentLength: 0}
+	case resp.StatusCode == 200:
+		flags, have = os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0
+		h.Reset()
+	default:
 		return "", fmt.Errorf("download %s: HTTP %d", url, resp.StatusCode)
 	}
-	f, err := os.CreateTemp(dir("tmp"), "dl-*")
+	f, err := os.OpenFile(part, flags, 0o644)
 	if err != nil {
 		return "", err
 	}
-	h := sha256.New()
-	_, err = io.Copy(io.MultiWriter(f, h, &progress{w: w, total: resp.ContentLength}), resp.Body)
+	total := resp.ContentLength
+	if total > 0 {
+		total += have
+	}
+	_, err = io.Copy(io.MultiWriter(f, h, &progress{w: w, total: total, done: have}), resp.Body)
 	f.Close()
 	if err != nil {
-		os.Remove(f.Name())
-		return "", err
+		return "", fmt.Errorf("%v — run the install again to resume", err)
 	}
 	if sha != "" && !strings.EqualFold(hex.EncodeToString(h.Sum(nil)), sha) {
-		os.Remove(f.Name())
+		os.Remove(part)
 		return "", fmt.Errorf("checksum mismatch for %s", url)
 	}
-	return f.Name(), nil
+	// Callers delete the file when done, so hand over a copy-free rename.
+	done := strings.TrimSuffix(part, ".part")
+	os.Remove(done)
+	if err := os.Rename(part, done); err != nil {
+		return "", err
+	}
+	return done, nil
 }
 
 // unzip extracts src into dst. stripTop drops the archive's single top folder
 // (nginx-1.x/, mysql-x-winx64/).
-func unzip(src, dst string, stripTop bool) error {
+func unzip(src, dst string, stripTop bool) error { return unzipSkip(src, dst, stripTop, nil) }
+
+// unzipSkip is unzip that leaves out entries (after stripping) skip matches.
+func unzipSkip(src, dst string, stripTop bool, skip func(name string) bool) error {
 	r, err := zip.OpenReader(src)
 	if err != nil {
 		return err
@@ -518,7 +553,7 @@ func unzip(src, dst string, stripTop bool) error {
 				continue
 			}
 		}
-		if name == "" {
+		if name == "" || (skip != nil && skip(strings.ReplaceAll(name, `\`, "/"))) {
 			continue
 		}
 		p := filepath.Join(root, name)
@@ -579,6 +614,11 @@ func writeShims() {
 	}
 	for _, tool := range []string{"mysql", "mysqldump", "mysqladmin"} {
 		shim(tool, fmt.Sprintf(`"%s" -P %d -h 127.0.0.1 %%*`, filepath.Join(mysqlDir(), "bin", tool+".exe"), c.Ports.MySQL))
+	}
+	if fileExists(pgBin("psql")) {
+		for _, tool := range []string{"psql", "pg_dump", "pg_restore", "createdb", "dropdb"} {
+			shim(tool, fmt.Sprintf(`"%s" -h 127.0.0.1 -p %d -U postgres %%*`, pgBin(tool), c.Ports.Postgres))
+		}
 	}
 	if fileExists(filepath.Join(redisDir(), "redis-cli.exe")) {
 		shim("redis-cli", fmt.Sprintf(`"%s" -p %d %%*`, filepath.Join(redisDir(), "redis-cli.exe"), c.Ports.Redis))

@@ -8,8 +8,8 @@ A fast, native local PHP stack for Windows 11, built as a modern replacement for
 | PHP 8.1 – 8.5 | windows.php.net release feed (SHA-256 verified) | NTS x64, several versions side by side, OPcache + JIT |
 | nginx | nginx.org (latest mainline) | HTTP/2, gzip, graceful reloads |
 | MySQL | Oracle CDN (latest release) | root / no password, utf8mb4 |
-| Redis | redis-windows builds of upstream Redis (SHA-256 verified) | 127.0.0.1:6379, persisted to `data
-edis` |
+| Redis | redis-windows builds of upstream Redis (SHA-256 verified) | 127.0.0.1:6379, persisted to `data\redis` |
+| PostgreSQL (optional) | EnterpriseDB Windows binaries (latest release) | `cove install postgres`; user postgres / no password, 127.0.0.1:5432 |
 | Composer | getcomposer.org (latest stable) | plus the global `laravel` installer |
 | Node.js | nodejs.org (latest LTS, SHA-256 verified) | several versions side by side; `.nvmrc` / `.node-version` pick one per project |
 
@@ -26,12 +26,15 @@ edis` |
 - **Tray app**: start and stop services, switch PHP, open sites, view logs and mail, and set start-at-login.
 - **Dashboard**: `http://cove.test`, also at `http://127.0.0.1:7771`.
 - Framework detection (Laravel, Symfony, WordPress, Craft, static) and `public/` roots are handled automatically.
+- **Dumps**: switch on capture in the Dumps tab and `dump()` / `dd()` from any site land there live (Symfony VarDumper's dump-server mode) instead of in the page.
+- **Sharing**: `cove share` gives a site a public `https://….trycloudflare.com` link through a Cloudflare quick tunnel (no account needed).
 - **Automatic databases**: when a site's `.env` points at Cove's MySQL, its `DB_DATABASE` is created for you. New folders in a parked directory are served within seconds.
 
 ## Build
 
 ```powershell
-.\build.ps1          # needs Go 1.22+ → dist\cove.exe + dist\CoveTray.exe
+.\build.ps1            # needs Go 1.22+ → dist\cove.exe, CoveTray.exe, CoveApp.exe
+.\build.ps1 -Release   # bump VERSION first; publishes a GitHub release that `cove update` installs
 ```
 
 ## Install
@@ -54,14 +57,15 @@ everything and asks you twice:
 ```
 cove up | down                      start/stop Cove + tray icon
 cove status                         services, versions, ports
-cove start|stop|restart [svc]       all | nginx | php | mysql | redis | mail | dns
+cove start|stop|restart [svc]       all | nginx | php | mysql | redis | postgres | mail | dns
 cove php [8.4]                      list / switch default PHP (auto-installs)
 cove node [22]                      list / switch default Node.js (an .nvmrc wins per project)
-cove install php 8.3|nginx|mysql|redis|composer|node
+cove install php 8.3|nginx|mysql|redis|postgres|composer|node
 cove isolate 8.3 [site] / unisolate
 cove sites | park [dir] | link [name] | unlink
 cove secure [site] | unsecure [site]
 cove open [site] | dashboard
+cove share [site] | unshare [site]  public https link via a Cloudflare quick tunnel
 cove logs [name] [-f] [-n 100]      cove logs php -f, cove logs nginx -f
 cove db [create|drop name]
 cove new my-app                     composer create-project laravel/laravel → my-app.test

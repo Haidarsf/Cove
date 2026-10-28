@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,31 +15,35 @@ import (
 // Ports used by every Cove service. Change them in config.json when another
 // stack (WAMP, XAMPP, IIS) is already holding the defaults.
 type Ports struct {
-	HTTP  int `json:"http"`
-	HTTPS int `json:"https"`
-	MySQL int `json:"mysql"`
-	Redis int `json:"redis"`
-	SMTP  int `json:"smtp"`
-	DNS   int `json:"dns"`
-	API   int `json:"api"`
+	HTTP     int `json:"http"`
+	HTTPS    int `json:"https"`
+	MySQL    int `json:"mysql"`
+	Redis    int `json:"redis"`
+	Postgres int `json:"postgres"`
+	Dumps    int `json:"dumps"`
+	SMTP     int `json:"smtp"`
+	DNS      int `json:"dns"`
+	API      int `json:"api"`
 }
 
 type Config struct {
-	TLD         string            `json:"tld"`
-	DefaultPHP  string            `json:"default_php"`
-	DefaultNode string            `json:"default_node"` // major line, e.g. "24"
-	Paths       []string          `json:"paths"`        // parked directories: every sub-folder becomes a site
-	Links       map[string]string `json:"links"`        // site name -> folder
-	Secured     map[string]bool   `json:"secured"`      // site name -> served over HTTPS
-	Isolated    map[string]string `json:"isolated"`     // site name -> PHP branch
-	Ports       Ports             `json:"ports"`
-	PHPWorkers  int               `json:"php_workers"`
-	Autostart   []string          `json:"autostart"`
+	TLD          string            `json:"tld"`
+	DefaultPHP   string            `json:"default_php"`
+	DefaultNode  string            `json:"default_node"` // major line, e.g. "24"
+	Paths        []string          `json:"paths"`        // parked directories: every sub-folder becomes a site
+	Links        map[string]string `json:"links"`        // site name -> folder
+	Secured      map[string]bool   `json:"secured"`      // site name -> served over HTTPS
+	Isolated     map[string]string `json:"isolated"`     // site name -> PHP branch
+	Ports        Ports             `json:"ports"`
+	PHPWorkers   int               `json:"php_workers"`
+	Autostart    []string          `json:"autostart"`
+	CaptureDumps bool              `json:"capture_dumps"` // send dump()/dd() to the dashboard
 }
 
 var (
-	cfgMu sync.RWMutex
-	cfg   *Config
+	cfgMu     sync.RWMutex
+	cfg       *Config
+	cfgBroken error // set while config.json can't be parsed; blocks saving
 )
 
 // Home is where Cove keeps binaries, data and generated config.
@@ -79,9 +86,9 @@ func defaultConfig() *Config {
 		Links:      map[string]string{},
 		Secured:    map[string]bool{},
 		Isolated:   map[string]string{},
-		Ports:      Ports{HTTP: 80, HTTPS: 443, MySQL: 3306, Redis: 6379, SMTP: 2525, DNS: 53, API: 7771},
+		Ports:      Ports{HTTP: 80, HTTPS: 443, MySQL: 3306, Redis: 6379, Postgres: 5432, Dumps: 9912, SMTP: 2525, DNS: 53, API: 7771},
 		PHPWorkers: 4,
-		Autostart:  []string{"dns", "php", "nginx", "mysql", "redis", "mail"},
+		Autostart:  []string{"dns", "php", "nginx", "mysql", "redis", "postgres", "mail"},
 	}
 }
 
@@ -90,7 +97,16 @@ func loadConfig() *Config {
 	defer cfgMu.Unlock()
 	c := defaultConfig()
 	if b, err := os.ReadFile(configPath()); err == nil {
-		json.Unmarshal(b, c)
+		// Editors (and PowerShell 5's Set-Content) may add a UTF-8 BOM.
+		b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
+		if err := json.Unmarshal(b, c); err != nil {
+			// Never let the defaults overwrite settings we couldn't read.
+			cfgBroken = fmt.Errorf("%s is not valid JSON (%v) — fix it or restore config.json.bak", configPath(), err)
+			log.Printf("config: %v", cfgBroken)
+			c = defaultConfig()
+		} else {
+			cfgBroken = nil
+		}
 	}
 	if c.Links == nil {
 		c.Links = map[string]string{}
@@ -132,9 +148,15 @@ func updateConfig(fn func(c *Config)) error {
 	getConfig()
 	cfgMu.Lock()
 	defer cfgMu.Unlock()
+	if cfgBroken != nil {
+		return cfgBroken
+	}
 	fn(cfg)
 	b, _ := json.MarshalIndent(cfg, "", "  ")
 	os.MkdirAll(Home(), 0o755)
+	if old, err := os.ReadFile(configPath()); err == nil && !bytes.Equal(old, b) {
+		os.WriteFile(configPath()+".bak", old, 0o644)
+	}
 	tmp := configPath() + ".tmp"
 	if err := os.WriteFile(tmp, b, 0o644); err != nil {
 		return err

@@ -128,6 +128,10 @@ select { padding: 6px 12px; border-radius: 10px; }
 .tile .foot { display: flex; gap: 6px; align-items: center; border-top: 1px dashed var(--line); padding-top: 12px; }
 .tile .foot select { flex: 1; min-width: 0; }
 .empty { padding: 56px 20px; text-align: center; color: var(--ink-2); }
+.dump { padding: 14px 20px; border-bottom: 1px solid var(--line); }
+.dump:last-child { border-bottom: 0; }
+.dump .meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 12.5px; color: var(--ink-2); margin-bottom: 8px; }
+.dump pre { margin: 0; font: 12.5px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--ink); max-height: 420px; overflow: auto; }
 .empty b { display: block; color: var(--ink); font-size: 16px; margin-bottom: 6px; }
 
 /* php */
@@ -222,14 +226,14 @@ tr:last-child td { border-bottom: 0; }
 <div class="offline" id="offline"><div class="panel"><h3 style="margin-top:0">Cove isn't running</h3><p class="hint">Start it from the Start menu or run <code>cove up</code>. This page reconnects by itself.</p></div></div>
 
 <script>
-const TABS = [['home','Home'],['sites','Sites'],['php','PHP'],['node','Node.js'],['db','Databases'],['mail','Mail'],['logs','Logs'],['settings','Settings']];
+const TABS = [['home','Home'],['sites','Sites'],['php','PHP'],['node','Node.js'],['db','Databases'],['mail','Mail'],['dumps','Dumps'],['logs','Logs'],['settings','Settings']];
 const ICON = {
   sites: '<path d="M4 5h16v3H4zm0 5h16v9H4zm3 3v3h4v-3z"/>',
   php: '<path d="M8 4 2 12l6 8h2.6l-6-8 6-8zm8 0h-2.6l6 8-6 8H16l6-8z"/>',
   mail: '<path d="M3 5h18v14H3zm2 2v.5l7 4.5 7-4.5V7l-7 4.5z"/>',
   layers: '<path d="M12 3 2 8l10 5 10-5zm-7.6 8.2L2 12.4 12 17.4l10-5-2.4-1.2L12 15z"/>',
 };
-let status = null, route = 'home', arg = '', logES = null, mailSel = null;
+let status = null, route = 'home', arg = '', logES = null, mailSel = null, dumpsNew = 0;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const js = s => esc(String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
@@ -255,7 +259,7 @@ document.addEventListener('click', e => {
 });
 
 function drawNav() {
-  $('#tabs').innerHTML = TABS.map(([id, l]) => `<a href="#${id}" class="${route === id ? 'on' : ''}">${l}${id === 'mail' && status?.mail_unread ? `<span class="badge">${status.mail_unread}</span>` : ''}</a>`).join('');
+  $('#tabs').innerHTML = TABS.map(([id, l]) => `<a href="#${id}" class="${route === id ? 'on' : ''}">${l}${id === 'mail' && status?.mail_unread ? `<span class="badge">${status.mail_unread}</span>` : ''}${id === 'dumps' && dumpsNew ? `<span class="badge">${dumpsNew}</span>` : ''}</a>`).join('');
   if (!status) return;
   const inst = status.services.filter(s => s.installed), up = inst.filter(s => s.state === 'running').length;
   $('#health').innerHTML = `<span class="pulse ${up === inst.length && up ? 'ok' : up ? 'part' : ''}"></span>${up}/${inst.length} running · PHP ${esc(status.default_php || '—')}`;
@@ -268,13 +272,14 @@ async function refresh() {
 }
 
 // ---------- Home ----------
-const GLYPH = { dns: 'DNS', php: 'PHP', nginx: 'NGX', mysql: 'SQL', redis: 'RDS', mail: 'SMTP' };
+const GLYPH = { dns: 'DNS', php: 'PHP', nginx: 'NGX', mysql: 'SQL', redis: 'RDS', postgres: 'PG', mail: 'SMTP' };
 const DESC = {
   dns: s => `Answers *.${status.tld} with 127.0.0.1`,
   php: s => `FastCGI pools · ${s.version ? 'PHP ' + s.version : 'idle'}`,
   nginx: s => `Ports ${s.port}`,
   mysql: s => `127.0.0.1:${s.port} · root, no password`,
   redis: s => `127.0.0.1:${s.port} · cache, queues, sessions`,
+  postgres: s => `127.0.0.1:${s.port} · postgres, no password`,
   mail: s => `Catches mail on 127.0.0.1:${s.port}`,
 };
 const ago = s => !s ? '' : s < 60 ? s + 's' : s < 3600 ? Math.floor(s / 60) + 'm' : Math.floor(s / 3600) + 'h ' + Math.floor(s % 3600 / 60) + 'm';
@@ -328,6 +333,7 @@ function home() {
     <div class="panel kv">
       <div>Database</div><div><code>DB_HOST=127.0.0.1</code> <code>DB_PORT=${s.ports.mysql}</code> <code>DB_USERNAME=root</code> <code>DB_PASSWORD=</code><div class="hint">The <code>DB_DATABASE</code> in a site's .env is created automatically</div></div>
       <div>Mail</div><div><code>MAIL_HOST=127.0.0.1</code> <code>MAIL_PORT=${s.ports.smtp}</code></div>
+      <div>PostgreSQL</div><div><code>DB_CONNECTION=pgsql</code> <code>DB_PORT=${s.ports.postgres}</code> <code>DB_USERNAME=postgres</code> <code>DB_PASSWORD=</code></div>
       <div>Redis</div><div><code>REDIS_CLIENT=predis</code> <code>REDIS_HOST=127.0.0.1</code> <code>REDIS_PORT=${s.ports.redis}</code><div class="hint">PHP for Windows has no phpredis extension, so run <code>composer require predis/predis</code></div></div>
       <div>New project</div><div><code>cove new my-app</code> → http://my-app.${esc(s.tld)}</div>
       <div>Parked folders</div><div>${s.paths.map(p => `<a href="#" class="mono" onclick="reveal('${js(p)}');return false">${esc(p)}</a>`).join('<br>')}</div>
@@ -366,11 +372,12 @@ async function sites() {
         <div class="top"><div class="avatar" style="background:${hue(s.name)}">${esc(s.name[0])}</div>
           <div style="min-width:0"><a class="host" href="${esc(s.url)}" target="_blank">${esc(s.host)}</a><div class="path" title="${esc(s.path)}">${esc(s.path)}</div></div></div>
         <div class="meta"><span class="chip ${s.framework === 'Laravel' ? 'lv' : s.framework === 'WordPress' ? 'wp' : ''}">${esc(s.framework)}</span>
-          ${s.secure ? '<span class="chip tls">HTTPS</span>' : ''}${s.linked ? '<span class="chip">linked</span>' : ''}${s.isolated ? `<span class="chip">pinned ${esc(s.php)}</span>` : ''}</div>
+          ${s.share ? `<a class="chip tls" href="${esc(s.share)}" title="Public link — anyone can open it">${esc(s.share.replace('https://', ''))}</a>` : ''}${s.secure ? '<span class="chip tls">HTTPS</span>' : ''}${s.linked ? '<span class="chip">linked</span>' : ''}${s.isolated ? `<span class="chip">pinned ${esc(s.php)}</span>` : ''}</div>
         <div class="foot">
           <select title="PHP version" onchange="iso('${s.name}',this.value)"><option value="">PHP ${esc(status.default_php)} (default)</option>${vers.map(v => `<option value="${v}" ${s.isolated && s.php === v ? 'selected' : ''}>PHP ${v}</option>`).join('')}</select>
           <button class="btn sm plain" title="${s.secure ? 'Turn HTTPS off' : 'Turn HTTPS on'}" onclick="sec('${s.name}',${!s.secure})">${s.secure ? 'HTTP' : 'HTTPS'}</button>
           <button class="btn sm plain" onclick="post('/api/sites/reveal',{name:'${s.name}'})">Folder</button>
+          <button class="btn sm plain" onclick="shr('${s.name}',${!s.share})">${s.share ? 'Stop sharing' : 'Share'}</button>
           ${s.linked ? `<button class="btn sm plain warn" onclick="unl('${s.name}')">Unlink</button>` : ''}
         </div>
       </div>`).join('')}</div>` : `<div class="panel empty"><b>No sites yet</b>Create a folder in <code>${esc(status.paths[0] || '')}</code> or link a project above.</div>`}
@@ -381,6 +388,7 @@ async function sites() {
 function filt() { const q = $('#q').value.toLowerCase(); document.querySelectorAll('.tile').forEach(t => t.style.display = t.dataset.n.includes(q) ? '' : 'none'); }
 const sec = (name, on) => act(() => post('/api/sites/secure', { name, secure: on }), on ? `${name} now uses HTTPS` : `${name} now uses HTTP`).then(sites);
 const iso = (name, php) => act(() => post('/api/sites/isolate', { name, php }), php ? `${name} pinned to PHP ${php}` : `${name} follows the default PHP`).then(sites);
+const shr = (name, on) => { if (on) toast('Opening a tunnel…'); return act(() => post('/api/sites/share', { name, share: on }), on ? `${name} is shared` : `${name} is no longer shared`).then(sites); };
 const unl = name => act(() => post('/api/sites/unlink', { name }), `${name} unlinked`).then(sites);
 const link = () => act(() => post('/api/sites/link', { path: $('#lp').value.trim(), name: $('#ln').value.trim() }), 'Site linked').then(sites);
 const park = () => act(() => post('/api/paths', { path: $('#lp').value.trim() }), 'Folder parked').then(sites);
@@ -434,7 +442,9 @@ async function node() {
 async function db() {
   $('#view').innerHTML = `<div class="title"><div><h1>Databases</h1><p>MySQL on <code>127.0.0.1:${status.ports.mysql}</code>, user <code>root</code>, no password.</p></div><div class="sp"></div>
     <input type="text" id="dbn" placeholder="new_database" style="width:210px" onkeydown="if(event.key==='Enter')mk()"><button class="btn fill" onclick="mk()">Create</button></div>
-    <div class="panel" id="dbl"><div class="empty">Loading…</div></div>`;
+    <div class="panel" id="dbl"><div class="empty">Loading…</div></div>
+    <div id="pgs"></div>`;
+  pgList();
   try {
     const d = (await api('/api/db')).filter(x => !x.system);
     $('#dbl').innerHTML = d.length ? `<table><thead><tr><th>Database</th><th>Tables</th><th>Size</th><th></th></tr></thead><tbody>${d.map(x => `
@@ -442,8 +452,43 @@ async function db() {
       : '<div class="empty"><b>No databases yet</b>Create one above.</div>';
   } catch (e) { $('#dbl').innerHTML = `<div class="empty"><b>MySQL isn't reachable</b>${esc(e.message)}</div>`; }
 }
+async function pgList() {
+  const pg = status.services.find(s => s.name === 'postgres');
+  if (!pg?.installed) return;
+  $('#pgs').innerHTML = `<div class="title" style="margin-top:28px"><div><h1 style="font-size:20px">PostgreSQL</h1><p>On <code>127.0.0.1:${status.ports.postgres}</code>, user <code>postgres</code>, no password.</p></div><div class="sp"></div>
+    <input type="text" id="pgn" placeholder="new_database" style="width:210px" onkeydown="if(event.key==='Enter')pgMk()"><button class="btn fill" onclick="pgMk()">Create</button></div>
+    <div class="panel" id="pgl"><div class="empty">Loading…</div></div>`;
+  try {
+    const d = await api('/api/pg');
+    $('#pgl').innerHTML = d?.length ? `<table><thead><tr><th>Database</th><th>Size</th><th></th></tr></thead><tbody>${d.map(x => `
+      <tr><td><b>${esc(x.name)}</b></td><td>${esc(x.size_mb)} MB</td><td style="text-align:right"><button class="btn sm plain warn" onclick="pgDrop('${esc(x.name)}')">Drop</button></td></tr>`).join('')}</tbody></table>`
+      : '<div class="empty"><b>No databases yet</b>Create one above.</div>';
+  } catch (e) { $('#pgl').innerHTML = `<div class="empty"><b>PostgreSQL isn't reachable</b>${esc(e.message)}</div>`; }
+}
+const pgMk = () => act(() => post('/api/pg', { name: $('#pgn').value.trim() }), 'Database created').then(db);
+const pgDrop = n => confirm(`Drop ${n}? All of its data will be deleted.`) && act(() => api('/api/pg/' + encodeURIComponent(n), { method: 'DELETE' }), `${n} dropped`).then(db);
 const mk = () => act(() => post('/api/db', { name: $('#dbn').value.trim() }), 'Database created').then(db);
 const drop = n => confirm(`Drop ${n}? All of its data will be deleted.`) && act(() => api('/api/db/' + encodeURIComponent(n), { method: 'DELETE' }), `${n} dropped`).then(db);
+
+async function checkUpdate() {
+  const box = $('#coveup');
+  try {
+    const r = await api('/api/update');
+    box.innerHTML = r.newer
+      ? `<span>Cove ${esc(r.version)} is available (you have ${esc(status.version)})</span><button class="btn sm sea" onclick="runUpdate()">Update now</button><a href="${esc(r.url)}">What's new</a>`
+      : `<span>Version ${esc(status.version)} · up to date</span>`;
+  } catch (e) { toast(e.message, true); }
+}
+async function runUpdate() {
+  const box = $('#console'); box.style.display = 'block'; box.textContent = '';
+  try {
+    const r = await fetch('/api/update', { method: 'POST', headers: { 'X-Cove': '1' } });
+    const rd = r.body.getReader(), dec = new TextDecoder();
+    for (;;) { const { value, done } = await rd.read(); if (done) break; box.textContent += dec.decode(value); box.scrollTop = box.scrollHeight; }
+  } catch (e) { /* the daemon restarts mid-stream */ }
+  box.textContent += '\nWaiting for the new version…';
+  for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 1000)); try { await refresh(); location.reload(); return; } catch {} }
+}
 
 // ---------- Mail ----------
 async function mail() {
@@ -507,7 +552,8 @@ function settings() {
       <div>Cove folder</div><div><a href="#" class="mono" onclick="reveal('${js(s.home)}');return false">${esc(s.home)}</a></div>
       <div>CLI tools</div><div><a href="#" class="mono" onclick="reveal('${js(s.bin)}');return false">${esc(s.bin)}</a><div class="hint">php, composer, laravel, mysql, redis-cli, node, npm and cove are on your PATH</div></div>
       <div>Domain</div><div><code>.${esc(s.tld)}</code> · dashboard at <a href="http://cove.${esc(s.tld)}">cove.${esc(s.tld)}</a></div>
-      <div>Ports</div><div class="mono">HTTP ${s.ports.http} · HTTPS ${s.ports.https} · MySQL ${s.ports.mysql} · Redis ${s.ports.redis} · SMTP ${s.ports.smtp} · DNS ${s.ports.dns} · UI ${s.ports.api}</div>
+      <div>Ports</div><div class="mono">HTTP ${s.ports.http} · HTTPS ${s.ports.https} · MySQL ${s.ports.mysql} · Redis ${s.ports.redis} · PostgreSQL ${s.ports.postgres} · SMTP ${s.ports.smtp} · DNS ${s.ports.dns} · UI ${s.ports.api}</div>
+      <div>Cove</div><div id="coveup" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span>Version ${esc(s.version)}</span><button class="btn sm" onclick="checkUpdate()">Check for updates</button></div>
       <div>Updates</div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="install('nginx')">Latest nginx</button><button class="btn sm" onclick="install('mysql')">Latest MySQL</button><button class="btn sm" onclick="install('composer')">${s.composer ? 'Update' : 'Install'} Composer</button><button class="btn sm" onclick="install('node')">${s.node ? 'Update Node.js ' + esc(s.node) : 'Install Node.js'}</button></div>
     </div><div class="console" id="console"></div>
     <div class="label">Command line</div>
@@ -521,7 +567,7 @@ function settings() {
 }
 
 // ---------- router ----------
-const VIEWS = { home, sites, php, node, db, mail, logs, settings };
+const VIEWS = { home, sites, php, node, db, mail, dumps, logs, settings };
 async function go() {
   const [r, ...rest] = (location.hash.slice(1) || 'home').split('/');
   route = VIEWS[r] ? r : 'home'; arg = rest.join('/');
@@ -531,6 +577,32 @@ async function go() {
   try { await VIEWS[route](); } catch (e) { toast(e.message, true); }
 }
 addEventListener('hashchange', go); go(); setInterval(refresh, 3000);
+// ---------- Dumps ----------
+const dumpRow = d => `<div class="dump"><div class="meta"><b class="mono">${esc(d.time)}</b>
+    ${d.site ? `<span class="chip">${esc(d.site)}</span>` : ''}${d.method ? `<span class="mono">${esc(d.method)}</span>` : ''}<span class="mono">${esc(d.uri)}</span>
+    <span style="flex:1"></span><span class="mono" title="${esc(d.file)}">${esc((d.file || '').split(/[\\\\/]/).pop())}:${d.line}</span></div>
+  <pre>${esc(d.text || '(empty)')}</pre></div>`;
+async function dumps() {
+  dumpsNew = 0; drawNav();
+  const on = status.capture_dumps;
+  $('#view').innerHTML = `<div class="title"><div><h1>Dumps</h1><p>${on ? 'Catching <code>dump()</code> and <code>dd()</code> from every site. They no longer appear in the page.' : 'Turn on to send <code>dump()</code> and <code>dd()</code> here instead of into the page.'}</p></div><div class="sp"></div>
+    <button class="switch ${on ? 'on' : ''}" aria-label="Capture dumps" onclick="act(()=>post('/api/dumps/capture',{on:${!on}}),'Dump capture ${on ? 'off' : 'on'}').then(dumps)"></button>
+    <button class="btn" onclick="act(()=>api('/api/dumps',{method:'DELETE'})).then(dumps)">Clear</button></div>
+    <div class="panel" id="dumpl"></div>`;
+  const list = await api('/api/dumps');
+  $('#dumpl').innerHTML = list.length ? list.slice().reverse().map(dumpRow).join('')
+    : `<div class="empty"><b>No dumps yet</b>${on ? 'Call <code>dump($value)</code> in any site.' : 'Switch capture on, then call <code>dump($value)</code>.'}</div>`;
+}
+(function watchDumps() {
+  const es = new EventSource('/api/dumps/stream');
+  es.onmessage = e => {
+    const d = JSON.parse(e.data);
+    if (route === 'dumps') { const l = $('#dumpl'); if (l) { if (l.querySelector('.empty')) l.innerHTML = ''; l.insertAdjacentHTML('afterbegin', dumpRow(d)); } }
+    else { dumpsNew++; drawNav(); }
+  };
+  es.onerror = () => { es.close(); setTimeout(watchDumps, 3000); };
+})();
+
 (function watchMail() {
   const es = new EventSource('/api/mail/stream');
   es.onmessage = e => { toast('New mail: ' + JSON.parse(e.data).subject); refresh(); if (route === 'mail') mail(); };

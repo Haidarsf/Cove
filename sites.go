@@ -20,6 +20,7 @@ type Site struct {
 	Isolated  bool   `json:"isolated"`
 	Linked    bool   `json:"linked"`
 	Framework string `json:"framework"`
+	Share     string `json:"share,omitempty"` // public tunnel URL while shared
 }
 
 var siteNameRe = regexp.MustCompile(`[^a-z0-9]+`)
@@ -107,6 +108,7 @@ func makeSite(c Config, name, path string, linked bool) Site {
 		s.Framework = "Static"
 	}
 	s.Secure = c.Secured[name]
+	s.Share = shareURL(name)
 	s.PHP, s.Isolated = c.DefaultPHP, false
 	if v, ok := c.Isolated[name]; ok {
 		s.PHP, s.Isolated = v, true
@@ -205,6 +207,9 @@ http {
 			up = phpUpstream(s.PHP)
 		}
 		names := fmt.Sprintf("%s *.%s", s.Host, s.Host)
+		if h := shareHost(s.Name); h != "" {
+			names += " " + h
+		}
 		if s.Secure {
 			fmt.Fprintf(&b, "\n    server {\n        %s\n        server_name %s;\n        return 301 https://$host%s$request_uri;\n    }\n",
 				listen(false), names, portSuffix(c.Ports.HTTPS, 443))
@@ -261,12 +266,12 @@ func siteServer(s Site, names, listen, upstream string, secure bool) string {
             fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
             fastcgi_param PATH_INFO $fastcgi_path_info;
             fastcgi_param HTTPS %s;
-            fastcgi_buffers 16 32k;
+%s            fastcgi_buffers 16 32k;
             fastcgi_buffer_size 64k;
             fastcgi_read_timeout 300;
             fastcgi_next_upstream error timeout;
         }
     }
-`, upstream, fwd(filepath.Join(nginxDir(), "conf")), https)
+`, upstream, fwd(filepath.Join(nginxDir(), "conf")), https, dumperParams())
 	return b.String()
 }

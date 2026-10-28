@@ -24,7 +24,7 @@ func watchSites() {
 				fmt.Fprintf(&env, "%s:%d;", s.Name, fi.ModTime().UnixNano())
 			}
 		}
-		for _, name := range []string{"mysql"} {
+		for _, name := range []string{"mysql", "postgres"} {
 			fmt.Fprintf(&env, "%s:%s;", name, serviceMap[name].Status().State)
 		}
 		if sites.String() != lastSites {
@@ -48,29 +48,40 @@ var dbNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`) // used inside backti
 // at Cove's own database server.
 func ensureSiteDatabases() {
 	c := getConfig()
-	if serviceMap["mysql"].Status().State != "running" {
-		return
-	}
+	up := func(svc string) bool { return serviceMap[svc].Status().State == "running" }
 	for _, s := range listSites() {
 		env := readEnv(filepath.Join(s.Path, ".env"))
 		conn, name := env["DB_CONNECTION"], env["DB_DATABASE"]
 		host, port := env["DB_HOST"], env["DB_PORT"]
-		if (conn != "mysql" && conn != "mariadb") || !dbNameRe.MatchString(name) {
+		if !dbNameRe.MatchString(name) || (host != "" && host != "127.0.0.1" && host != "localhost") {
 			continue
 		}
-		if (host != "" && host != "127.0.0.1" && host != "localhost") || (port != "" && port != fmt.Sprint(c.Ports.MySQL)) {
+		var created bool
+		var err error
+		switch {
+		case (conn == "mysql" || conn == "mariadb") && (port == "" || port == fmt.Sprint(c.Ports.MySQL)) && up("mysql"):
+			created, err = createMySQLDB(name)
+		case conn == "pgsql" && (port == "" || port == fmt.Sprint(c.Ports.Postgres)) && up("postgres"):
+			created, err = createPostgresDB(name)
+		default:
 			continue
 		}
-		out, err := mysqlExec("SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name='" + name + "'")
-		if err != nil || strings.TrimSpace(out) != "0" {
-			continue
-		}
-		if _, err := mysqlExec("CREATE DATABASE `" + name + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"); err != nil {
+		if err != nil {
 			log.Printf("creating database %s for %s: %v", name, s.Host, err)
-		} else {
-			log.Printf("created database %s for %s", name, s.Host)
+		} else if created {
+			log.Printf("created %s database %s for %s", conn, name, s.Host)
 		}
 	}
+}
+
+// createMySQLDB is a no-op when the database exists.
+func createMySQLDB(name string) (bool, error) {
+	out, err := mysqlExec("SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name='" + name + "'")
+	if err != nil || strings.TrimSpace(out) != "0" {
+		return false, err
+	}
+	_, err = mysqlExec("CREATE DATABASE `" + name + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+	return err == nil, err
 }
 
 // readEnv parses the KEY=value lines of a .env file (quotes and trailing

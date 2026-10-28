@@ -20,7 +20,8 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-const appVersion = "1.0.0"
+// appVersion is set by build.ps1 from the VERSION file (-X main.appVersion).
+var appVersion = "dev"
 
 // guiBuild is set via -ldflags "-X main.guiBuild=1" for CoveTray.exe.
 var guiBuild = ""
@@ -71,6 +72,11 @@ func main() {
 		err = unsystem()
 	case "uninstall":
 		err = cmdUninstall(rest)
+	case "update", "upgrade":
+		err = cmdUpdate(rest)
+	case "__up-after":
+		pid, _ := strconv.Atoi(rest[0])
+		err = upAfter(pid)
 	case "serve":
 		fmt.Println(cAccent + "Cove running in foreground — Ctrl+C to stop" + cReset)
 		runDaemon(false)
@@ -133,6 +139,10 @@ func main() {
 		err = siteCall("/api/sites/secure", rest, map[string]any{"secure": false}, "is now served over HTTP")
 	case "open":
 		err = cmdOpen(rest)
+	case "share":
+		err = cmdShare(rest, true)
+	case "unshare":
+		err = cmdShare(rest, false)
 	case "dashboard", "ui":
 		openURL(fmt.Sprintf("http://127.0.0.1:%d", getConfig().Ports.API))
 	case "logs", "log", "tail":
@@ -196,7 +206,7 @@ func usage() {
 
 %sSERVICES%s
   cove status                   Show services, versions and ports
-  cove start|stop|restart [svc] svc = all | nginx | php | mysql | redis | mail | dns
+  cove start|stop|restart [svc] svc = all | nginx | php | mysql | redis | postgres | mail | dns
   cove logs [name] [-f] [-n 50] Show or follow a log (nginx-error, nginx-access, php-8.4-errors, mysql, cove…)
 
 %sPHP%s
@@ -211,16 +221,18 @@ func usage() {
   cove link [name]              Serve the current folder as name.test       (unlink to undo)
   cove secure [site]            Serve over HTTPS with a trusted cert         (unsecure to undo)
   cove open [site]              Open a site in your browser
+  cove share [site]             Give a site a public https URL (Cloudflare tunnel; unshare to stop)
   cove new <name>               Create a new Laravel app in your parked folder
 
 %sMORE%s
   cove db [create|drop <name>]  List or manage MySQL databases
-  cove install nginx|mysql|redis|composer   Upgrade a component to the latest release
+  cove install nginx|mysql|redis|postgres|composer   Install or upgrade a component
   cove node [22]                List Node.js versions / switch the default (an .nvmrc wins per project)
   cove install node [22]        Install Node.js side by side (latest LTS, or the newest of a major line)
   cove autostart on|off         Launch Cove at Windows login
   cove trust | dns | hosts      Re-run CA trust / .test DNS rule / hosts-file fallback
   cove doctor                   Diagnose ports, DNS and certificates
+  cove update [--check]         Install the latest Cove release (uses your gh login)
   cove uninstall                Remove Cove (asks before deleting databases and config)
 `, cAccent+cBold, appVersion, cReset, cBold, cReset, cBold, cReset, cBold, cReset, cBold, cReset, cBold, cReset)
 }
@@ -261,6 +273,7 @@ func call(method, path string, body any) ([]byte, error) {
 	req, _ := http.NewRequest(method, apiBase()+path, rdr)
 	req.Header.Set("X-Cove", "1")
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "cove-cli/"+strings.Join(os.Args[1:2], ""))
 	resp, err := (&http.Client{Timeout: 2 * time.Minute}).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("Cove is not running — start it with `cove up`")
@@ -350,7 +363,7 @@ func cmdStatus() error {
 
 func cmdInstall(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: cove install php [version] | nginx | mysql | redis | composer | node [major]")
+		return fmt.Errorf("usage: cove install php [version] | nginx | mysql | redis | postgres | composer | node [major]")
 	}
 	branch := ""
 	if len(args) > 1 {
@@ -886,6 +899,9 @@ func cmdDoctor() {
 			fmt.Println("  " + cRed + "✗" + cReset + " " + label + cDim + "  → " + fix + cReset)
 		}
 	}
+	if cfgBroken != nil {
+		check(false, "config.json readable", cfgBroken.Error())
+	}
 	check(len(installedPHP()) > 0, "PHP installed ("+strings.Join(installedPHP(), ", ")+")", "cove install php")
 	check(fileExists(filepath.Join(nginxDir(), "nginx.exe")), "nginx installed "+versionOf(nginxDir()), "cove install nginx")
 	check(fileExists(filepath.Join(mysqlDir(), "bin", "mysqld.exe")), "MySQL installed "+versionOf(mysqlDir()), "cove install mysql")
@@ -901,9 +917,12 @@ func cmdDoctor() {
 		name string
 		port int
 		svc  string
-	}{{"HTTP", c.Ports.HTTP, "nginx"}, {"HTTPS", c.Ports.HTTPS, "nginx"}, {"MySQL", c.Ports.MySQL, "mysql"}, {"Redis", c.Ports.Redis, "redis"}, {"SMTP", c.Ports.SMTP, "mail"}} {
+	}{{"HTTP", c.Ports.HTTP, "nginx"}, {"HTTPS", c.Ports.HTTPS, "nginx"}, {"MySQL", c.Ports.MySQL, "mysql"}, {"Redis", c.Ports.Redis, "redis"}, {"PostgreSQL", c.Ports.Postgres, "postgres"}, {"SMTP", c.Ports.SMTP, "mail"}} {
+		if p.svc == "postgres" && !fileExists(pgBin("postgres")) {
+			continue // optional; only its own port matters once installed
+		}
 		owner := portOwner(p.port)
-		free := owner == "" || portFree(p.port) == nil || (daemon && (strings.EqualFold(owner, "nginx.exe") || strings.EqualFold(owner, "mysqld.exe") || strings.EqualFold(owner, "redis-server.exe") || strings.HasPrefix(strings.ToLower(owner), "cove")))
+		free := owner == "" || portFree(p.port) == nil || (daemon && (strings.EqualFold(owner, "nginx.exe") || strings.EqualFold(owner, "mysqld.exe") || strings.EqualFold(owner, "redis-server.exe") || strings.EqualFold(owner, "postgres.exe") || strings.HasPrefix(strings.ToLower(owner), "cove")))
 		check(free, fmt.Sprintf("port %d (%s) available", p.port, p.name),
 			fmt.Sprintf("in use by %s — stop it (e.g. WAMP) or change ports.%s in %s", owner, strings.ToLower(p.name), configPath()))
 	}
