@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"net/http"
 	"os"
@@ -798,8 +799,16 @@ func createShortcuts() error {
 	if !fileExists(app) {
 		return fmt.Errorf("CoveApp.exe not found in %s", binDir())
 	}
-	ico := filepath.Join(Home(), "cove.ico")
+	// Windows caches shortcut icons by path, so the file name carries a hash
+	// of the artwork: a new logo gets a new path and actually shows up.
 	png := iconPNG(true, 256)
+	ico := filepath.Join(Home(), fmt.Sprintf("cove-%08x.ico", crc32.ChecksumIEEE(png)))
+	old, _ := filepath.Glob(filepath.Join(Home(), "cove*.ico"))
+	for _, f := range old {
+		if f != ico {
+			os.Remove(f)
+		}
+	}
 	var b bytes.Buffer
 	b.Write([]byte{0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 32, 0}) // ICONDIR + entry (0 = 256px)
 	b.Write([]byte{byte(len(png)), byte(len(png) >> 8), byte(len(png) >> 16), byte(len(png) >> 24), 22, 0, 0, 0})
