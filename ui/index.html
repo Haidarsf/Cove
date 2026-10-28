@@ -254,7 +254,7 @@ document.addEventListener('click', e => {
   if (url.host !== location.host && /^https?:$/.test(url.protocol)) { e.preventDefault(); window.coveOpenExternal(url.href); }
 });
 
-function chrome() {
+function drawNav() {
   $('#tabs').innerHTML = TABS.map(([id, l]) => `<a href="#${id}" class="${route === id ? 'on' : ''}">${l}${id === 'mail' && status?.mail_unread ? `<span class="badge">${status.mail_unread}</span>` : ''}</a>`).join('');
   if (!status) return;
   const inst = status.services.filter(s => s.installed), up = inst.filter(s => s.state === 'running').length;
@@ -263,7 +263,7 @@ function chrome() {
 async function refresh() {
   try { status = await api('/api/status'); $('#offline').style.display = 'none'; }
   catch { $('#offline').style.display = 'grid'; return; }
-  chrome();
+  drawNav();
   if (route === 'home') home();
 }
 
@@ -490,7 +490,7 @@ async function go() {
   route = VIEWS[r] ? r : 'home'; arg = rest.join('/');
   if (route !== 'logs') { logES?.close(); logES = null; }
   if (!status) await refresh();
-  chrome(); if (!status) return;
+  drawNav(); if (!status) return;
   try { await VIEWS[route](); } catch (e) { toast(e.message, true); }
 }
 addEventListener('hashchange', go); go(); setInterval(refresh, 3000);

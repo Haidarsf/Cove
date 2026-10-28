@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 var (
@@ -409,8 +411,12 @@ func shutdown() {
 	})
 }
 
+// openURL hands u to the default browser. ShellExecute with SW_SHOWNORMAL, not
+// a hidden rundll32: that passes SW_HIDE on, and the browser never appears.
 func openURL(u string) {
-	hidden(exec.Command("rundll32", "url.dll,FileProtocolHandler", u)).Start()
+	verb, _ := windows.UTF16PtrFromString("open")
+	file, _ := windows.UTF16PtrFromString(u)
+	windows.ShellExecute(0, verb, file, nil, nil, windows.SW_SHOWNORMAL)
 }
 
 func revealPath(p string) {
