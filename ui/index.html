@@ -268,12 +268,13 @@ async function refresh() {
 }
 
 // ---------- Home ----------
-const GLYPH = { dns: 'DNS', php: 'PHP', nginx: 'NGX', mysql: 'SQL', mail: 'SMTP' };
+const GLYPH = { dns: 'DNS', php: 'PHP', nginx: 'NGX', mysql: 'SQL', redis: 'RDS', mail: 'SMTP' };
 const DESC = {
   dns: s => `Answers *.${status.tld} with 127.0.0.1`,
   php: s => `FastCGI pools · ${s.version ? 'PHP ' + s.version : 'idle'}`,
   nginx: s => `Ports ${s.port}`,
   mysql: s => `127.0.0.1:${s.port} · root, no password`,
+  redis: s => `127.0.0.1:${s.port} · cache, queues, sessions`,
   mail: s => `Catches mail on 127.0.0.1:${s.port}`,
 };
 const ago = s => !s ? '' : s < 60 ? s + 's' : s < 3600 ? Math.floor(s / 60) + 'm' : Math.floor(s / 3600) + 'h ' + Math.floor(s % 3600 / 60) + 'm';
@@ -327,6 +328,7 @@ function home() {
     <div class="panel kv">
       <div>Database</div><div><code>DB_HOST=127.0.0.1</code> <code>DB_PORT=${s.ports.mysql}</code> <code>DB_USERNAME=root</code> <code>DB_PASSWORD=</code></div>
       <div>Mail</div><div><code>MAIL_HOST=127.0.0.1</code> <code>MAIL_PORT=${s.ports.smtp}</code></div>
+      <div>Redis</div><div><code>REDIS_CLIENT=predis</code> <code>REDIS_HOST=127.0.0.1</code> <code>REDIS_PORT=${s.ports.redis}</code><div class="hint">PHP for Windows has no phpredis extension, so run <code>composer require predis/predis</code></div></div>
       <div>New project</div><div><code>cove new my-app</code> → http://my-app.${esc(s.tld)}</div>
       <div>Parked folders</div><div>${s.paths.map(p => `<a href="#" class="mono" onclick="reveal('${js(p)}');return false">${esc(p)}</a>`).join('<br>')}</div>
     </div>`;
@@ -480,9 +482,9 @@ function settings() {
   $('#view').innerHTML = `<div class="title"><div><h1>Settings</h1><p>Ports and the TLD live in <code>config.json</code>. Restart Cove after editing it.</p></div></div>
     <div class="panel kv">
       <div>Cove folder</div><div><a href="#" class="mono" onclick="reveal('${js(s.home)}');return false">${esc(s.home)}</a></div>
-      <div>CLI tools</div><div><a href="#" class="mono" onclick="reveal('${js(s.bin)}');return false">${esc(s.bin)}</a><div class="hint">php, composer, laravel, mysql, node, npm and cove are on your PATH</div></div>
+      <div>CLI tools</div><div><a href="#" class="mono" onclick="reveal('${js(s.bin)}');return false">${esc(s.bin)}</a><div class="hint">php, composer, laravel, mysql, redis-cli, node, npm and cove are on your PATH</div></div>
       <div>Domain</div><div><code>.${esc(s.tld)}</code> · dashboard at <a href="http://cove.${esc(s.tld)}">cove.${esc(s.tld)}</a></div>
-      <div>Ports</div><div class="mono">HTTP ${s.ports.http} · HTTPS ${s.ports.https} · MySQL ${s.ports.mysql} · SMTP ${s.ports.smtp} · DNS ${s.ports.dns} · UI ${s.ports.api}</div>
+      <div>Ports</div><div class="mono">HTTP ${s.ports.http} · HTTPS ${s.ports.https} · MySQL ${s.ports.mysql} · Redis ${s.ports.redis} · SMTP ${s.ports.smtp} · DNS ${s.ports.dns} · UI ${s.ports.api}</div>
       <div>Updates</div><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" onclick="install('nginx')">Latest nginx</button><button class="btn sm" onclick="install('mysql')">Latest MySQL</button><button class="btn sm" onclick="install('composer')">${s.composer ? 'Update' : 'Install'} Composer</button><button class="btn sm" onclick="install('node')">${s.node ? 'Update Node.js ' + esc(s.node) : 'Install Node.js'}</button></div>
     </div><div class="console" id="console"></div>
     <div class="label">Command line</div>

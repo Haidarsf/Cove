@@ -183,13 +183,13 @@ func usage() {
 	fmt.Printf(`%s≋ Cove %s%s  — fast local PHP dev environment for Windows
 
 %sGETTING STARTED%s
-  cove setup                    Download latest PHP, nginx, MySQL, Composer, Node.js and configure everything
+  cove setup                    Download latest PHP, nginx, MySQL, Redis, Composer, Node.js and configure everything
   cove up | down                Start / stop Cove (tray icon + all services)
   cove dashboard                Open the web dashboard (also at http://cove.test)
 
 %sSERVICES%s
   cove status                   Show services, versions and ports
-  cove start|stop|restart [svc] svc = all | nginx | php | mysql | mail | dns
+  cove start|stop|restart [svc] svc = all | nginx | php | mysql | redis | mail | dns
   cove logs [name] [-f] [-n 50] Show or follow a log (nginx-error, nginx-access, php-8.4-errors, mysql, cove…)
 
 %sPHP%s
@@ -208,7 +208,7 @@ func usage() {
 
 %sMORE%s
   cove db [create|drop <name>]  List or manage MySQL databases
-  cove install nginx|mysql|composer   Upgrade a component to the latest release
+  cove install nginx|mysql|redis|composer   Upgrade a component to the latest release
   cove install node [22]        Install Node.js (latest LTS, or the newest of a major line)
   cove autostart on|off         Launch Cove at Windows login
   cove trust | dns | hosts      Re-run CA trust / .test DNS rule / hosts-file fallback
@@ -342,7 +342,7 @@ func cmdStatus() error {
 
 func cmdInstall(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: cove install php [version] | nginx | mysql | composer | node [major]")
+		return fmt.Errorf("usage: cove install php [version] | nginx | mysql | redis | composer | node [major]")
 	}
 	branch := ""
 	if len(args) > 1 {
@@ -669,7 +669,7 @@ func cmdSetup() error {
 	if err := addToUserPath(bd); err != nil {
 		fmt.Println(cYellow + "! could not update PATH: " + err.Error() + cReset)
 	} else {
-		ok("Added " + bd + " to your PATH (open a new terminal to use php, composer, mysql, node, cove)")
+		ok("Added " + bd + " to your PATH (open a new terminal to use php, composer, mysql, redis-cli, node, cove)")
 	}
 
 	// 2. Binaries.
@@ -680,6 +680,7 @@ func cmdSetup() error {
 		{len(installedPHP()) > 0, func() error { return installPHP("latest", os.Stdout) }},
 		{fileExists(filepath.Join(nginxDir(), "nginx.exe")), func() error { return installNginx(os.Stdout) }},
 		{fileExists(filepath.Join(mysqlDir(), "bin", "mysqld.exe")), func() error { return installMySQL(os.Stdout) }},
+		{fileExists(filepath.Join(redisDir(), "redis-server.exe")), func() error { return installRedis(os.Stdout) }},
 		{fileExists(filepath.Join(binDir(), "composer.phar")), func() error { return installComposer(os.Stdout) }},
 		{fileExists(filepath.Join(nodeDir(), "node.exe")), func() error { return installNode("", os.Stdout) }},
 	}
@@ -880,6 +881,7 @@ func cmdDoctor() {
 	check(len(installedPHP()) > 0, "PHP installed ("+strings.Join(installedPHP(), ", ")+")", "cove install php")
 	check(fileExists(filepath.Join(nginxDir(), "nginx.exe")), "nginx installed "+versionOf(nginxDir()), "cove install nginx")
 	check(fileExists(filepath.Join(mysqlDir(), "bin", "mysqld.exe")), "MySQL installed "+versionOf(mysqlDir()), "cove install mysql")
+	check(fileExists(filepath.Join(redisDir(), "redis-server.exe")), "Redis installed "+versionOf(redisDir()), "cove install redis")
 	check(fileExists(filepath.Join(nodeDir(), "node.exe")), "Node.js installed "+versionOf(nodeDir()), "cove install node")
 	if node, err := exec.LookPath("node"); err == nil && fileExists(filepath.Join(nodeDir(), "node.exe")) {
 		// A system-wide Node (machine PATH) is found before Cove's user-PATH shim.
@@ -891,9 +893,9 @@ func cmdDoctor() {
 		name string
 		port int
 		svc  string
-	}{{"HTTP", c.Ports.HTTP, "nginx"}, {"HTTPS", c.Ports.HTTPS, "nginx"}, {"MySQL", c.Ports.MySQL, "mysql"}, {"SMTP", c.Ports.SMTP, "mail"}} {
+	}{{"HTTP", c.Ports.HTTP, "nginx"}, {"HTTPS", c.Ports.HTTPS, "nginx"}, {"MySQL", c.Ports.MySQL, "mysql"}, {"Redis", c.Ports.Redis, "redis"}, {"SMTP", c.Ports.SMTP, "mail"}} {
 		owner := portOwner(p.port)
-		free := owner == "" || portFree(p.port) == nil || (daemon && (strings.EqualFold(owner, "nginx.exe") || strings.EqualFold(owner, "mysqld.exe") || strings.HasPrefix(strings.ToLower(owner), "cove")))
+		free := owner == "" || portFree(p.port) == nil || (daemon && (strings.EqualFold(owner, "nginx.exe") || strings.EqualFold(owner, "mysqld.exe") || strings.EqualFold(owner, "redis-server.exe") || strings.HasPrefix(strings.ToLower(owner), "cove")))
 		check(free, fmt.Sprintf("port %d (%s) available", p.port, p.name),
 			fmt.Sprintf("in use by %s — stop it (e.g. WAMP) or change ports.%s in %s", owner, strings.ToLower(p.name), configPath()))
 	}

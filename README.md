@@ -8,6 +8,7 @@ A fast, native local PHP stack for Windows 11, built as a modern replacement for
 | PHP 8.1 – 8.5 | windows.php.net release feed (SHA-256 verified) | NTS x64, several versions side by side, OPcache + JIT |
 | nginx | nginx.org (latest mainline) | HTTP/2, gzip, graceful reloads |
 | MySQL | Oracle CDN (latest release) | root / no password, utf8mb4 |
+| Redis | redis-windows builds of upstream Redis (SHA-256 verified) | 127.0.0.1:6379, persisted to `dataedis` |
 | Composer | getcomposer.org (latest stable) | plus the global `laravel` installer |
 | Node.js | nodejs.org (latest LTS, SHA-256 verified) | `node`, `npm`, `npx`; any major line with `cove install node 22` |
 
@@ -51,9 +52,9 @@ everything and asks you twice:
 ```
 cove up | down                      start/stop Cove + tray icon
 cove status                         services, versions, ports
-cove start|stop|restart [svc]       all | nginx | php | mysql | mail | dns
+cove start|stop|restart [svc]       all | nginx | php | mysql | redis | mail | dns
 cove php [8.4]                      list / switch default PHP (auto-installs)
-cove install php 8.3|nginx|mysql|composer|node
+cove install php 8.3|nginx|mysql|redis|composer|node
 cove isolate 8.3 [site] / unisolate
 cove sites | park [dir] | link [name] | unlink
 cove secure [site] | unsecure [site]

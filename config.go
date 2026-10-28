@@ -15,6 +15,7 @@ type Ports struct {
 	HTTP  int `json:"http"`
 	HTTPS int `json:"https"`
 	MySQL int `json:"mysql"`
+	Redis int `json:"redis"`
 	SMTP  int `json:"smtp"`
 	DNS   int `json:"dns"`
 	API   int `json:"api"`
@@ -59,6 +60,7 @@ func phpDir(branch string) string { return filepath.Join(Home(), "php", branch) 
 func nginxDir() string            { return filepath.Join(Home(), "nginx") }
 func mysqlDir() string            { return filepath.Join(Home(), "mysql") }
 func nodeDir() string             { return filepath.Join(Home(), "node") }
+func redisDir() string            { return filepath.Join(Home(), "redis") }
 func logDir() string              { return dir("logs") }
 func confDir() string             { return dir("config") }
 func certDir() string             { return dir("certs") }
@@ -75,9 +77,9 @@ func defaultConfig() *Config {
 		Links:      map[string]string{},
 		Secured:    map[string]bool{},
 		Isolated:   map[string]string{},
-		Ports:      Ports{HTTP: 80, HTTPS: 443, MySQL: 3306, SMTP: 2525, DNS: 53, API: 7771},
+		Ports:      Ports{HTTP: 80, HTTPS: 443, MySQL: 3306, Redis: 6379, SMTP: 2525, DNS: 53, API: 7771},
 		PHPWorkers: 4,
-		Autostart:  []string{"dns", "php", "nginx", "mysql", "mail"},
+		Autostart:  []string{"dns", "php", "nginx", "mysql", "redis", "mail"},
 	}
 }
 

@@ -284,6 +284,88 @@ func installNode(major string, w io.Writer) error {
 	return nil
 }
 
+// githubAsset finds the newest release asset of repo whose name matches, with
+// the SHA-256 GitHub publishes for it.
+func githubAsset(repo string, match func(name string) bool) (tag, url, sha string, err error) {
+	body, err := getString("https://api.github.com/repos/" + repo + "/releases/latest")
+	if err != nil {
+		return "", "", "", err
+	}
+	var rel struct {
+		TagName string `json:"tag_name"`
+		Assets  []struct {
+			Name   string
+			URL    string `json:"browser_download_url"`
+			Digest string
+		}
+	}
+	if err := json.Unmarshal([]byte(body), &rel); err != nil {
+		return "", "", "", err
+	}
+	for _, a := range rel.Assets {
+		if match(a.Name) {
+			return rel.TagName, a.URL, strings.TrimPrefix(a.Digest, "sha256:"), nil
+		}
+	}
+	return "", "", "", fmt.Errorf("no matching download in %s %s", repo, rel.TagName)
+}
+
+// installRedis uses the redis-windows builds of upstream Redis (msys2 runtime).
+func installRedis(w io.Writer) error {
+	v, url, sha, err := githubAsset("redis-windows/redis-windows", func(n string) bool {
+		return strings.HasSuffix(n, "-Windows-x64-msys2.zip")
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(w, "→ Redis %s\n", v)
+	zipPath, err := download(url, sha, w)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(zipPath)
+	os.RemoveAll(redisDir())
+	if err := unzip(zipPath, redisDir(), zipHasTopDir(zipPath)); err != nil {
+		return err
+	}
+	os.WriteFile(filepath.Join(redisDir(), "VERSION"), []byte(v), 0o644)
+	addAutostart("redis")
+	writeShims()
+	fmt.Fprintf(w, "✓ Redis %s installed (127.0.0.1:%d)\n", v, getConfig().Ports.Redis)
+	return nil
+}
+
+// zipHasTopDir reports whether every entry sits under one top-level folder.
+func zipHasTopDir(src string) bool {
+	r, err := zip.OpenReader(src)
+	if err != nil {
+		return false
+	}
+	defer r.Close()
+	top := ""
+	for _, f := range r.File {
+		i := strings.IndexAny(f.Name, "/\\")
+		if i < 0 {
+			return false
+		}
+		if top == "" {
+			top = f.Name[:i]
+		} else if f.Name[:i] != top {
+			return false
+		}
+	}
+	return top != ""
+}
+
+// addAutostart makes a newly installed service start with Cove.
+func addAutostart(name string) {
+	updateConfig(func(c *Config) {
+		if !containsStr(c.Autostart, name) {
+			c.Autostart = append(c.Autostart, name)
+		}
+	})
+}
+
 // installCABundle fetches Mozilla's CA bundle (via curl.se) and appends the Cove
 // root so PHP's curl/openssl trust both the internet and local *.test sites.
 func installCABundle(w io.Writer) error {
@@ -454,6 +536,9 @@ func writeShims() {
 	}
 	for _, tool := range []string{"mysql", "mysqldump", "mysqladmin"} {
 		shim(tool, fmt.Sprintf(`"%s" -P %d -h 127.0.0.1 %%*`, filepath.Join(mysqlDir(), "bin", tool+".exe"), c.Ports.MySQL))
+	}
+	if fileExists(filepath.Join(redisDir(), "redis-cli.exe")) {
+		shim("redis-cli", fmt.Sprintf(`"%s" -p %d %%*`, filepath.Join(redisDir(), "redis-cli.exe"), c.Ports.Redis))
 	}
 	// npm and npx are .cmd files themselves, so they need call to return here.
 	if fileExists(filepath.Join(nodeDir(), "node.exe")) {

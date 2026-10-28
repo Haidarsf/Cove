@@ -395,6 +395,9 @@ func runInstall(what, branch string, w io.Writer) error {
 	case "mysql":
 		pause("mysql")
 		return installMySQL(w)
+	case "redis":
+		pause("redis")
+		return installRedis(w)
 	case "composer":
 		return installComposer(w)
 	case "node":
