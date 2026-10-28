@@ -285,7 +285,7 @@ func notifyErr(err error) {
 }
 
 // trayIcon draws Cove's Bay logo at runtime (ICO wrapping a PNG): a C-shaped
-// shoreline with water flowing in, on a deep indigo tile, greyed out when
+// shoreline with water flowing in, on a deep teal tile, greyed out when
 // every service is stopped.
 func trayIcon(active bool) []byte {
 	const n = 32
@@ -304,8 +304,8 @@ func trayIcon(active bool) []byte {
 // the two waves merge into one bold wave so it stays readable at 16px.
 func iconPNG(active bool, n int) []byte {
 	scale := 64 / float64(n)
-	tile := color.NRGBA{0x26, 0x21, 0x5C, 255}
-	light, mid, pale := color.NRGBA{0xAF, 0xA9, 0xEC, 255}, color.NRGBA{0x7F, 0x77, 0xDD, 255}, color.NRGBA{0xEE, 0xED, 0xFE, 255}
+	tile := color.NRGBA{0x0B, 0x3B, 0x3C, 255}
+	light, mid, pale := color.NRGBA{0x9F, 0xF0, 0xE3, 255}, color.NRGBA{0x14, 0xB8, 0xA6, 255}, color.NRGBA{0xE9, 0xFB, 0xF8, 255}
 	if !active {
 		tile = color.NRGBA{0x44, 0x44, 0x41, 255}
 		light, mid, pale = color.NRGBA{0xB4, 0xB2, 0xA9, 255}, color.NRGBA{0x88, 0x87, 0x80, 255}, color.NRGBA{0xD3, 0xD1, 0xC7, 255}
