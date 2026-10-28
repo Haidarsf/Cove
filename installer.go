@@ -13,10 +13,32 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
 var httpClient = &http.Client{Timeout: 30 * time.Minute}
+
+var (
+	dlMu     sync.Mutex
+	dlActive = map[string]bool{}
+)
+
+func tryLockDownload(part string) bool {
+	dlMu.Lock()
+	defer dlMu.Unlock()
+	if dlActive[part] {
+		return false
+	}
+	dlActive[part] = true
+	return true
+}
+
+func unlockDownload(part string) {
+	dlMu.Lock()
+	delete(dlActive, part)
+	dlMu.Unlock()
+}
 
 type PHPRelease struct {
 	Branch  string `json:"branch"`
@@ -477,6 +499,11 @@ func mb(n int64) float64 { return float64(n) / 1024 / 1024 }
 func download(url, sha string, w io.Writer) (string, error) {
 	sum := sha256.Sum256([]byte(url))
 	part := filepath.Join(dir("tmp"), "dl-"+hex.EncodeToString(sum[:8])+".part")
+	// Two requests for the same file would both append to one .part.
+	if !tryLockDownload(part) {
+		return "", fmt.Errorf("%s is already being downloaded", filepath.Base(url))
+	}
+	defer unlockDownload(part)
 	h := sha256.New()
 	var have int64
 	if f, err := os.Open(part); err == nil {

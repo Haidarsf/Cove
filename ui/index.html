@@ -366,7 +366,7 @@ async function sites() {
       <input type="text" id="lp" placeholder="C:\\path\\to\\project" style="flex:2;min-width:220px">
       <input type="text" id="ln" placeholder="name (optional)" style="flex:1;min-width:130px">
       <button class="btn" onclick="park()">Park folder</button><button class="btn fill" onclick="link()">Link site</button>
-    </div>
+    </div><div class="console" id="console"></div>
     ${list.length ? `<div class="tiles">${list.map(s => `
       <div class="panel tile" data-n="${esc(s.name)}">
         <div class="top"><div class="avatar" style="background:${hue(s.name)}">${esc(s.name[0])}</div>
@@ -388,7 +388,16 @@ async function sites() {
 function filt() { const q = $('#q').value.toLowerCase(); document.querySelectorAll('.tile').forEach(t => t.style.display = t.dataset.n.includes(q) ? '' : 'none'); }
 const sec = (name, on) => act(() => post('/api/sites/secure', { name, secure: on }), on ? `${name} now uses HTTPS` : `${name} now uses HTTP`).then(sites);
 const iso = (name, php) => act(() => post('/api/sites/isolate', { name, php }), php ? `${name} pinned to PHP ${php}` : `${name} follows the default PHP`).then(sites);
-const shr = (name, on) => { if (on) toast('Opening a tunnel…'); return act(() => post('/api/sites/share', { name, share: on }), on ? `${name} is shared` : `${name} is no longer shared`).then(sites); };
+async function shr(name, on) {
+  if (on && !status.cloudflared) {
+    toast('Downloading cloudflared (about 60 MB, once). Progress is shown below');
+    await install('cloudflared');
+    if (!status.cloudflared) return;
+  }
+  if (on) toast('Opening a tunnel…');
+  await act(() => post('/api/sites/share', { name, share: on }), on ? `${name} is shared. The link is on its card` : `${name} is no longer shared`);
+  if (route === 'sites') sites();
+}
 const unl = name => act(() => post('/api/sites/unlink', { name }), `${name} unlinked`).then(sites);
 const link = () => act(() => post('/api/sites/link', { path: $('#lp').value.trim(), name: $('#ln').value.trim() }), 'Site linked').then(sites);
 const park = () => act(() => post('/api/paths', { path: $('#lp').value.trim() }), 'Folder parked').then(sites);

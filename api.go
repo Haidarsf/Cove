@@ -318,6 +318,7 @@ func apiStatus(w http.ResponseWriter, r *http.Request) {
 		"node":          versionOf(nodeVersionDir(c.DefaultNode)),
 		"node_versions": nodeVersions(c.DefaultNode),
 		"capture_dumps": c.CaptureDumps,
+		"cloudflared":   fileExists(cloudflaredPath()),
 		"bin":           binDir(),
 	}, nil)
 }
@@ -457,6 +458,8 @@ func runInstall(what, branch string, w io.Writer) error {
 	case "postgres":
 		pause("postgres")
 		return installPostgres(w)
+	case "cloudflared":
+		return installCloudflared(w)
 	case "composer":
 		return installComposer(w)
 	case "node":

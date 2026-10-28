@@ -40,7 +40,11 @@ func installCloudflared(w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return moveFile(p, cloudflaredPath())
+	if err := moveFile(p, cloudflaredPath()); err != nil {
+		return err
+	}
+	fmt.Fprintf(w, "✓ cloudflared %s installed\n", v)
+	return nil
 }
 
 // shareURL returns the public URL of a shared site, or "".
@@ -65,9 +69,7 @@ func startShare(s Site) error {
 	}
 	shareMu.Unlock()
 	if !fileExists(cloudflaredPath()) {
-		if err := installCloudflared(io.Discard); err != nil {
-			return fmt.Errorf("downloading cloudflared: %w", err)
-		}
+		return fmt.Errorf("cloudflared isn't installed yet — run `cove install cloudflared`")
 	}
 	c := getConfig()
 	// HTTPS sites go to 443 (SNI picks the site's cert); plain ones to 80, where
@@ -143,7 +145,12 @@ func cmdShare(args []string, on bool) error {
 		body["path"] = cwd
 	}
 	if on {
-		info("Opening a tunnel (the first share downloads cloudflared)…")
+		if !fileExists(cloudflaredPath()) {
+			if err := cmdInstall([]string{"cloudflared"}); err != nil {
+				return err
+			}
+		}
+		info("Opening a tunnel…")
 	}
 	b, err := call("POST", "/api/sites/share", body)
 	if err != nil {

@@ -363,7 +363,7 @@ func cmdStatus() error {
 
 func cmdInstall(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: cove install php [version] | nginx | mysql | redis | postgres | composer | node [major]")
+		return fmt.Errorf("usage: cove install php [version] | nginx | mysql | redis | postgres | composer | cloudflared | node [major]")
 	}
 	branch := ""
 	if len(args) > 1 {
