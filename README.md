@@ -11,7 +11,7 @@ A fast, native local PHP stack for Windows 11, built as a modern replacement for
 | Redis | redis-windows builds of upstream Redis (SHA-256 verified) | 127.0.0.1:6379, persisted to `data
 edis` |
 | Composer | getcomposer.org (latest stable) | plus the global `laravel` installer |
-| Node.js | nodejs.org (latest LTS, SHA-256 verified) | `node`, `npm`, `npx`; any major line with `cove install node 22` |
+| Node.js | nodejs.org (latest LTS, SHA-256 verified) | several versions side by side; `.nvmrc` / `.node-version` pick one per project |
 
 ## Laravel Herd–style features
 
@@ -56,6 +56,7 @@ cove up | down                      start/stop Cove + tray icon
 cove status                         services, versions, ports
 cove start|stop|restart [svc]       all | nginx | php | mysql | redis | mail | dns
 cove php [8.4]                      list / switch default PHP (auto-installs)
+cove node [22]                      list / switch default Node.js (an .nvmrc wins per project)
 cove install php 8.3|nginx|mysql|redis|composer|node
 cove isolate 8.3 [site] / unisolate
 cove sites | park [dir] | link [name] | unlink

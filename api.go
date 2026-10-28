@@ -97,6 +97,15 @@ func serveAPI(ln net.Listener) {
 		reply(w, rels, err)
 	})
 	mux.HandleFunc("POST /api/install", apiInstall)
+	mux.HandleFunc("GET /api/node/available", func(w http.ResponseWriter, r *http.Request) {
+		rels, err := availableNode()
+		reply(w, rels, err)
+	})
+	mux.HandleFunc("POST /api/node/default", func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Major string }
+		json.NewDecoder(r.Body).Decode(&body)
+		reply(w, nil, setDefaultNode(body.Major))
+	})
 
 	mux.HandleFunc("GET /api/logs", func(w http.ResponseWriter, r *http.Request) { reply(w, logNames(), nil) })
 	mux.HandleFunc("GET /api/logs/{name}", apiLogTail)
@@ -250,19 +259,20 @@ func apiStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	reply(w, map[string]any{
-		"version":     appVersion,
-		"home":        Home(),
-		"services":    st,
-		"php":         php,
-		"default_php": c.DefaultPHP,
-		"tld":         c.TLD,
-		"ports":       c.Ports,
-		"paths":       c.Paths,
-		"sites":       len(listSites()),
-		"mail_unread": unread,
-		"composer":    fileExists(filepath.Join(binDir(), "composer.phar")),
-		"node":        versionOf(nodeDir()),
-		"bin":         binDir(),
+		"version":       appVersion,
+		"home":          Home(),
+		"services":      st,
+		"php":           php,
+		"default_php":   c.DefaultPHP,
+		"tld":           c.TLD,
+		"ports":         c.Ports,
+		"paths":         c.Paths,
+		"sites":         len(listSites()),
+		"mail_unread":   unread,
+		"composer":      fileExists(filepath.Join(binDir(), "composer.phar")),
+		"node":          versionOf(nodeVersionDir(c.DefaultNode)),
+		"node_versions": nodeVersions(c.DefaultNode),
+		"bin":           binDir(),
 	}, nil)
 }
 

@@ -247,6 +247,41 @@ func latestNode(major string) (string, error) {
 	return "", fmt.Errorf("no Node.js %s release for Windows found", major)
 }
 
+type NodeRelease struct {
+	Major   string `json:"major"`
+	Version string `json:"version"`
+	LTS     string `json:"lts,omitempty"`
+}
+
+// availableNode lists the newest Windows release of each major line from 18 up.
+func availableNode() ([]NodeRelease, error) {
+	body, err := getString("https://nodejs.org/dist/index.json")
+	if err != nil {
+		return nil, err
+	}
+	var rels []struct {
+		Version string
+		Files   []string
+		LTS     any
+	}
+	if err := json.Unmarshal([]byte(body), &rels); err != nil {
+		return nil, err
+	}
+	var out []NodeRelease
+	seen := map[string]bool{}
+	for _, r := range rels {
+		v := strings.TrimPrefix(r.Version, "v")
+		maj := strings.SplitN(v, ".", 2)[0]
+		if seen[maj] || atoi(maj) < 18 || !containsStr(r.Files, "win-x64-zip") {
+			continue
+		}
+		seen[maj] = true
+		lts, _ := r.LTS.(string)
+		out = append(out, NodeRelease{maj, v, lts})
+	}
+	return out, nil
+}
+
 func installNode(major string, w io.Writer) error {
 	v, err := latestNode(major)
 	if err != nil {
@@ -272,11 +307,19 @@ func installNode(major string, w io.Writer) error {
 		return err
 	}
 	defer os.Remove(zipPath)
-	os.RemoveAll(nodeDir())
-	if err := unzip(zipPath, nodeDir(), true); err != nil {
+	migrateNodeLayout()
+	// Each major line lives side by side in node\<major>; reinstalling one
+	// replaces only that line.
+	maj := strings.SplitN(strings.TrimPrefix(v, "v"), ".", 2)[0]
+	dst := nodeVersionDir(maj)
+	os.RemoveAll(dst)
+	if err := unzip(zipPath, dst, true); err != nil {
 		return err
 	}
-	os.WriteFile(filepath.Join(nodeDir(), "VERSION"), []byte(strings.TrimPrefix(v, "v")), 0o644)
+	os.WriteFile(filepath.Join(dst, "VERSION"), []byte(strings.TrimPrefix(v, "v")), 0o644)
+	if c := getConfig(); c.DefaultNode == "" || !fileExists(filepath.Join(nodeVersionDir(c.DefaultNode), "node.exe")) {
+		updateConfig(func(c *Config) { c.DefaultNode = maj })
+	}
 	writeShims()
 	// npm's default global prefix, so `npm i -g` tools (pnpm, vite…) run.
 	appendUserPath(filepath.Join(os.Getenv("APPDATA"), "npm"))
@@ -540,10 +583,11 @@ func writeShims() {
 	if fileExists(filepath.Join(redisDir(), "redis-cli.exe")) {
 		shim("redis-cli", fmt.Sprintf(`"%s" -p %d %%*`, filepath.Join(redisDir(), "redis-cli.exe"), c.Ports.Redis))
 	}
-	// npm and npx are .cmd files themselves, so they need call to return here.
-	if fileExists(filepath.Join(nodeDir(), "node.exe")) {
-		shim("node", fmt.Sprintf(`"%s" %%*`, filepath.Join(nodeDir(), "node.exe")))
-		shim("npm", fmt.Sprintf(`call "%s" %%*`, filepath.Join(nodeDir(), "npm.cmd")))
-		shim("npx", fmt.Sprintf(`call "%s" %%*`, filepath.Join(nodeDir(), "npx.cmd")))
+	// node/npm/npx go through cove.exe, which picks the version from the
+	// nearest .nvmrc / .node-version, else the default.
+	if len(installedNode()) > 0 {
+		for _, tool := range []string{"node", "npm", "npx"} {
+			shim(tool, fmt.Sprintf(`"%s" __run %s %%*`, filepath.Join(bd, "cove.exe"), tool))
+		}
 	}
 }

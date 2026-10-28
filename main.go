@@ -46,6 +46,11 @@ func main() {
 		runDaemon(true)
 		return
 	}
+	// The node/npm/npx shims: run before enableVT, which would change the
+	// console code page under the tool.
+	if len(args) >= 2 && args[0] == "__run" {
+		os.Exit(runNodeTool(args[1], args[2:]))
+	}
 	enableVT()
 	if len(args) == 0 {
 		usage()
@@ -100,6 +105,8 @@ func main() {
 		err = cmdInstall(rest)
 	case "php", "use":
 		err = cmdPHP(rest)
+	case "node":
+		err = cmdNode(rest)
 	case "isolate":
 		if len(rest) == 0 {
 			err = fmt.Errorf("usage: cove isolate <php-version> [site]")
@@ -209,7 +216,8 @@ func usage() {
 %sMORE%s
   cove db [create|drop <name>]  List or manage MySQL databases
   cove install nginx|mysql|redis|composer   Upgrade a component to the latest release
-  cove install node [22]        Install Node.js (latest LTS, or the newest of a major line)
+  cove node [22]                List Node.js versions / switch the default (an .nvmrc wins per project)
+  cove install node [22]        Install Node.js side by side (latest LTS, or the newest of a major line)
   cove autostart on|off         Launch Cove at Windows login
   cove trust | dns | hosts      Re-run CA trust / .test DNS rule / hosts-file fallback
   cove doctor                   Diagnose ports, DNS and certificates
@@ -682,7 +690,7 @@ func cmdSetup() error {
 		{fileExists(filepath.Join(mysqlDir(), "bin", "mysqld.exe")), func() error { return installMySQL(os.Stdout) }},
 		{fileExists(filepath.Join(redisDir(), "redis-server.exe")), func() error { return installRedis(os.Stdout) }},
 		{fileExists(filepath.Join(binDir(), "composer.phar")), func() error { return installComposer(os.Stdout) }},
-		{fileExists(filepath.Join(nodeDir(), "node.exe")), func() error { return installNode("", os.Stdout) }},
+		{len(installedNode()) > 0, func() error { return installNode("", os.Stdout) }},
 	}
 	for _, s := range steps {
 		if !s.have {
@@ -882,8 +890,8 @@ func cmdDoctor() {
 	check(fileExists(filepath.Join(nginxDir(), "nginx.exe")), "nginx installed "+versionOf(nginxDir()), "cove install nginx")
 	check(fileExists(filepath.Join(mysqlDir(), "bin", "mysqld.exe")), "MySQL installed "+versionOf(mysqlDir()), "cove install mysql")
 	check(fileExists(filepath.Join(redisDir(), "redis-server.exe")), "Redis installed "+versionOf(redisDir()), "cove install redis")
-	check(fileExists(filepath.Join(nodeDir(), "node.exe")), "Node.js installed "+versionOf(nodeDir()), "cove install node")
-	if node, err := exec.LookPath("node"); err == nil && fileExists(filepath.Join(nodeDir(), "node.exe")) {
+	check(len(installedNode()) > 0, "Node.js installed ("+strings.Join(installedNode(), ", ")+", default "+c.DefaultNode+")", "cove install node")
+	if node, err := exec.LookPath("node"); err == nil && len(installedNode()) > 0 {
 		// A system-wide Node (machine PATH) is found before Cove's user-PATH shim.
 		check(strings.EqualFold(filepath.Dir(node), binDir()), "node on PATH is Cove's", node+" comes first (system PATH wins) — uninstall that Node.js to use Cove's")
 	}

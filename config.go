@@ -22,15 +22,16 @@ type Ports struct {
 }
 
 type Config struct {
-	TLD        string            `json:"tld"`
-	DefaultPHP string            `json:"default_php"`
-	Paths      []string          `json:"paths"`    // parked directories: every sub-folder becomes a site
-	Links      map[string]string `json:"links"`    // site name -> folder
-	Secured    map[string]bool   `json:"secured"`  // site name -> served over HTTPS
-	Isolated   map[string]string `json:"isolated"` // site name -> PHP branch
-	Ports      Ports             `json:"ports"`
-	PHPWorkers int               `json:"php_workers"`
-	Autostart  []string          `json:"autostart"`
+	TLD         string            `json:"tld"`
+	DefaultPHP  string            `json:"default_php"`
+	DefaultNode string            `json:"default_node"` // major line, e.g. "24"
+	Paths       []string          `json:"paths"`        // parked directories: every sub-folder becomes a site
+	Links       map[string]string `json:"links"`        // site name -> folder
+	Secured     map[string]bool   `json:"secured"`      // site name -> served over HTTPS
+	Isolated    map[string]string `json:"isolated"`     // site name -> PHP branch
+	Ports       Ports             `json:"ports"`
+	PHPWorkers  int               `json:"php_workers"`
+	Autostart   []string          `json:"autostart"`
 }
 
 var (
@@ -55,16 +56,17 @@ func dir(parts ...string) string {
 	return p
 }
 
-func binDir() string              { return dir("bin") }
-func phpDir(branch string) string { return filepath.Join(Home(), "php", branch) }
-func nginxDir() string            { return filepath.Join(Home(), "nginx") }
-func mysqlDir() string            { return filepath.Join(Home(), "mysql") }
-func nodeDir() string             { return filepath.Join(Home(), "node") }
-func redisDir() string            { return filepath.Join(Home(), "redis") }
-func logDir() string              { return dir("logs") }
-func confDir() string             { return dir("config") }
-func certDir() string             { return dir("certs") }
-func dataDir(sub string) string   { return dir("data", sub) }
+func binDir() string                     { return dir("bin") }
+func phpDir(branch string) string        { return filepath.Join(Home(), "php", branch) }
+func nginxDir() string                   { return filepath.Join(Home(), "nginx") }
+func mysqlDir() string                   { return filepath.Join(Home(), "mysql") }
+func nodeDir() string                    { return filepath.Join(Home(), "node") }
+func nodeVersionDir(major string) string { return filepath.Join(nodeDir(), major) }
+func redisDir() string                   { return filepath.Join(Home(), "redis") }
+func logDir() string                     { return dir("logs") }
+func confDir() string                    { return dir("config") }
+func certDir() string                    { return dir("certs") }
+func dataDir(sub string) string          { return dir("data", sub) }
 
 func configPath() string { return filepath.Join(Home(), "config.json") }
 

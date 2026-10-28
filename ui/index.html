@@ -222,7 +222,7 @@ tr:last-child td { border-bottom: 0; }
 <div class="offline" id="offline"><div class="panel"><h3 style="margin-top:0">Cove isn't running</h3><p class="hint">Start it from the Start menu or run <code>cove up</code>. This page reconnects by itself.</p></div></div>
 
 <script>
-const TABS = [['home','Home'],['sites','Sites'],['php','PHP'],['db','Databases'],['mail','Mail'],['logs','Logs'],['settings','Settings']];
+const TABS = [['home','Home'],['sites','Sites'],['php','PHP'],['node','Node.js'],['db','Databases'],['mail','Mail'],['logs','Logs'],['settings','Settings']];
 const ICON = {
   sites: '<path d="M4 5h16v3H4zm0 5h16v9H4zm3 3v3h4v-3z"/>',
   php: '<path d="M8 4 2 12l6 8h2.6l-6-8 6-8zm8 0h-2.6l6 8-6 8H16l6-8z"/>',
@@ -313,7 +313,7 @@ function home() {
       </div>`).join('')}</div>
     <div class="label">Tools</div>
     <div class="panel svc-list">${[
-      { name: 'node', glyph: 'JS', label: 'Node.js', version: s.node, desc: 'node, npm and npx on your PATH' },
+      { name: 'node', glyph: 'JS', label: 'Node.js', version: s.node, desc: `node, npm and npx · ${s.node_versions?.length || 0} installed · <a href="#node">manage versions</a>` },
       { name: 'composer', glyph: 'CMP', label: 'Composer', version: s.composer && 'latest stable', desc: 'composer and laravel on your PATH' },
     ].map(t => `
       <div class="svc ${t.version ? 'running' : ''}">
@@ -345,7 +345,7 @@ async function install(what, branch) {
     for (;;) { const { value, done } = await rd.read(); if (done) break; if (box) { box.textContent += dec.decode(value); box.scrollTop = box.scrollHeight; } }
     toast(`${what} ${branch || ''} ready`);
   } catch (e) { toast(e.message, true); }
-  await refresh(); if (route === 'php') php();
+  await refresh(); if (route === 'php') php(); if (route === 'node') node();
 }
 
 // ---------- Sites ----------
@@ -405,6 +405,29 @@ async function php() {
     $('#avail').innerHTML = av.map(r => { const v = r.version.replace(/-\d+$/, ''); return `<div class="row"><b style="width:46px">${r.branch}</b><span class="grow">PHP ${esc(v)} <span class="hint">· ${esc(r.size)}</span></span>
       ${have[r.branch] ? (have[r.branch] === v ? '<span class="chip">installed</span>' : `<button class="btn sm sea" onclick="install('php','${r.branch}')">Update to ${esc(v)}</button>`) : `<button class="btn sm fill" onclick="install('php','${r.branch}')">Install</button>`}</div>`; }).join('');
   } catch (e) { $('#avail').innerHTML = `<div class="empty">Couldn't reach windows.php.net: ${esc(e.message)}</div>`; }
+}
+
+// ---------- Node.js ----------
+async function node() {
+  $('#view').innerHTML = `<div class="title"><div><h1>Node.js</h1><p>Versions live side by side. A project's <code>.nvmrc</code> or <code>.node-version</code> picks its own; everything else uses the default.</p></div></div>
+    <div class="php-grid" id="have"></div><div class="console" id="console"></div>
+    <div class="label">Available from nodejs.org</div><div class="panel rows" id="avail"><div class="empty">Checking releases…</div></div>
+    <div class="label">Command line</div><div class="panel kv"><div>Switch default</div><div><code>cove node 22</code></div>
+      <div>Per project</div><div><code>echo 22 > .nvmrc</code> <span class="hint">· also <code>lts/iron</code>, <code>v20.11.0</code></span></div>
+      <div>Global packages</div><div class="hint"><code>npm i -g</code> installs to <code>%APPDATA%\\npm</code>, shared by every version</div></div>`;
+  const vs = status.node_versions || [];
+  $('#have').innerHTML = vs.length ? vs.slice().reverse().map(n => `
+    <div class="panel php-card ${n.default ? 'def' : ''}">${n.default ? '<span class="chip tls tag">default</span>' : ''}
+      <div class="big">${n.major}</div><div class="hint">Node.js ${esc(n.version)}</div>
+      <div class="acts">${n.default ? '' : `<button class="btn sm fill" onclick="act(()=>post('/api/node/default',{major:'${n.major}'}),'Default Node.js is now ${n.major}').then(node)">Make default</button>`}
+        <button class="btn sm" onclick="install('node','${n.major}')">Update</button>
+        <button class="btn sm plain" onclick="reveal('${js(status.home + '\\node\\' + n.major)}')">Folder</button></div>
+    </div>`).join('') : '<div class="panel empty"><b>No Node.js yet</b>Pick a version below.</div>';
+  try {
+    const av = await api('/api/node/available'), have = Object.fromEntries(vs.map(n => [n.major, n.version]));
+    $('#avail').innerHTML = av.map(r => `<div class="row"><b style="width:46px">${r.major}</b><span class="grow">Node.js ${esc(r.version)} ${r.lts ? `<span class="chip tls">LTS · ${esc(r.lts)}</span>` : '<span class="hint">· current</span>'}</span>
+      ${have[r.major] ? (have[r.major] === r.version ? '<span class="chip">installed</span>' : `<button class="btn sm sea" onclick="install('node','${r.major}')">Update to ${esc(r.version)}</button>`) : `<button class="btn sm fill" onclick="install('node','${r.major}')">Install</button>`}</div>`).join('');
+  } catch (e) { $('#avail').innerHTML = `<div class="empty">Couldn't reach nodejs.org: ${esc(e.message)}</div>`; }
 }
 
 // ---------- Databases ----------
@@ -498,7 +521,7 @@ function settings() {
 }
 
 // ---------- router ----------
-const VIEWS = { home, sites, php, db, mail, logs, settings };
+const VIEWS = { home, sites, php, node, db, mail, logs, settings };
 async function go() {
   const [r, ...rest] = (location.hash.slice(1) || 'home').split('/');
   route = VIEWS[r] ? r : 'home'; arg = rest.join('/');

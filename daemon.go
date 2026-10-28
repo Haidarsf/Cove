@@ -416,6 +416,7 @@ func runDaemon(withTray bool) {
 	}
 	initServices()
 	ensureSiteCerts()
+	migrateNodeLayout()
 	writeShims()
 	writeNginxConf()
 	go registerUninstall() // keeps the Installed apps entry and its version current
