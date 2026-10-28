@@ -640,7 +640,9 @@ func writeShims() {
 		shim("laravel", fmt.Sprintf(`call "%s" global exec laravel -- %%*`, filepath.Join(bd, "composer.cmd")))
 	}
 	for _, tool := range []string{"mysql", "mysqldump", "mysqladmin"} {
-		shim(tool, fmt.Sprintf(`"%s" -P %d -h 127.0.0.1 %%*`, filepath.Join(mysqlDir(), "bin", tool+".exe"), c.Ports.MySQL))
+		// -u root up front: without it the client logs in as the Windows
+		// default user "ODBC". A -u given later on the command line wins.
+		shim(tool, fmt.Sprintf(`"%s" -u root -P %d -h 127.0.0.1 %%*`, filepath.Join(mysqlDir(), "bin", tool+".exe"), c.Ports.MySQL))
 	}
 	if fileExists(pgBin("psql")) {
 		for _, tool := range []string{"psql", "pg_dump", "pg_restore", "createdb", "dropdb"} {
